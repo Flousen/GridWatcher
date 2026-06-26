@@ -217,10 +217,10 @@ button {
 
 <div class="instructions">
   <b>CLICK</b> empty space → place <span style="color:#bb44ff">Sensor</span> &nbsp;|&nbsp;
-  <b>CLICK</b> Sensor → select it &nbsp;|&nbsp;
-  <b>CLICK</b> Node (while Sensor selected) → toggle connection &nbsp;|&nbsp;
+  <b>CLICK</b> Sensor to select it, then <b>CLICK</b> any <span style="color:#00ccff">Data Node</span> to connect them &nbsp;|&nbsp;
+  <b style="color:#ffee00">One Sensor can connect to multiple Nodes at once</b> — click again to disconnect &nbsp;|&nbsp;
   <span class="key">RIGHT-CLICK</span> Sensor → remove it &nbsp;|&nbsp;
-  Hit <b>TEST</b> to verify every Node gets a unique alarm pattern.
+  Hit <b>TEST</b> to verify every Node triggers a unique alarm pattern.
 </div>
 
 <div id="hud">
@@ -296,7 +296,7 @@ const LEVELS = [
   {
     id: 1,
     title: 'BINARY BASICS',
-    hint: 'TIP: 2 sensors → 3 unique patterns (01, 10, 11). Connect wisely!',
+    hint: 'TIP: Each Sensor can connect to multiple Nodes. 2 sensors give 3 patterns: S1 alone, S2 alone, or S1+S2 together.',
     sensorBudget: 2,
     nodes: (() => {
       const lab = ['A','B','C'];
@@ -522,6 +522,7 @@ function drawSensor(sensor, state) {
   noGlow();
   ctx.restore();
 
+  // Sensor label
   ctx.fillStyle = textCol;
   ctx.font = 'bold 12px Courier New';
   ctx.textAlign = 'center';
@@ -529,6 +530,21 @@ function drawSensor(sensor, state) {
   if (state !== 'idle') glow(glowCol, 10);
   ctx.fillText(label, x, y);
   noGlow();
+
+  // Connection count badge (top-right corner of diamond)
+  const connCount = (S.conns.get(id) || new Set()).size;
+  const bx = x + 18, by = y - 18;
+  ctx.fillStyle = connCount > 0 ? 'rgba(0,220,170,0.18)' : 'rgba(255,255,255,0.06)';
+  ctx.strokeStyle = connCount > 0 ? '#00ddaa' : '#334455';
+  ctx.lineWidth = 1;
+  glow(connCount > 0 ? '#00ddaa' : 'transparent', connCount > 0 ? 8 : 0);
+  ctx.beginPath(); ctx.arc(bx, by, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  noGlow();
+  ctx.fillStyle = connCount > 0 ? '#00ffcc' : '#445566';
+  ctx.font = 'bold 10px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(connCount, bx, by);
 }
 
 // ── Main render ───────────────────────────────────────────────────────────────
@@ -686,7 +702,14 @@ canvas.addEventListener('click', e => {
 
   const hs = hitSensor(p.x, p.y);
   if (hs) {
-    S.selId = (S.selId === hs.id) ? null : hs.id;
+    if (S.selId === hs.id) {
+      S.selId = null;
+      setStatus('Sensor deselected.', 'info');
+    } else {
+      S.selId = hs.id;
+      const cc = (S.conns.get(hs.id) || new Set()).size;
+      setStatus(`S${hs.id+1} selected (${cc} connection${cc!==1?'s':''}). Now click any Data Node to connect — you can connect to multiple!`, 'info');
+    }
     render(); return;
   }
 
@@ -697,10 +720,17 @@ canvas.addEventListener('click', e => {
     const cs = S.conns.get(sid);
     if (cs.has(hn.id)) {
       cs.delete(hn.id);
+      setStatus(`Disconnected S${sid+1} from Node ${hn.label}.`, 'info');
     } else {
       if (cs.size >= 4) { setStatus('Max 4 connections per Sensor.', 'warn'); return; }
       cs.add(hn.id);
+      setStatus(`Connected S${sid+1} → Node ${hn.label}. Click another Node to add more connections!`, 'info');
     }
+    render(); return;
+  }
+
+  if (hn && S.selId === null) {
+    setStatus('Select a Sensor first (click it), then click this Node to connect them.', 'warn');
     render(); return;
   }
 
