@@ -376,6 +376,43 @@ const LEVELS = [
       return pts_circle(7, 350, 228, 170).map((p,i) => ({ id:i, ...p, label:lab[i] }));
     })(),
   },
+  {
+    id: 4,
+    title: 'QUAD SIGNAL',
+    hint: 'TIP: 4 sensors give 15 patterns. You need 9 — pick any 9 distinct combinations.',
+    explain: 'With 4 Sensors, 2⁴ − 1 = <b>15 unique patterns</b> are possible. You only need 9 of them, so there\'s room to experiment. Think of each sensor as a <b>bit position</b> (S1=bit 1, S2=bit 2, …). Each node needs a unique 4-bit combination — just pick any 9 of the 15.',
+    sensorBudget: 4,
+    nodes: (() => {
+      const lab = 'ABCDEFGHI'.split('');
+      return pts_circle(9, 350, 225, 170).map((p, i) => ({ id: i, ...p, label: lab[i] }));
+    })(),
+  },
+  {
+    id: 5,
+    title: 'DENSE MESH',
+    hint: 'TIP: 12 nodes, 15 available patterns — only 3 can go unused. Map them all out before wiring.',
+    explain: '12 nodes with a 4-sensor budget means <b>only 3 of the 15 patterns can go unused</b>. The two-ring layout adds visual distance but not extra patterns — you still need 12 distinct 4-bit combinations spread across all nodes without any pair sharing a pattern.',
+    sensorBudget: 4,
+    nodes: (() => {
+      const lab = 'ABCDEFGHIJKL'.split('');
+      const inner = pts_circle(5, 350, 225, 90);
+      const outer  = pts_circle(7, 350, 225, 185, -Math.PI / 2 + Math.PI / 7);
+      return [...inner, ...outer].map((p, i) => ({ id: i, ...p, label: lab[i] }));
+    })(),
+  },
+  {
+    id: 6,
+    title: 'EXTENDED HAMMING',
+    hint: 'TIP: All 15 patterns must be used — assign each node a unique 4-bit code from 0001 to 1111.',
+    explain: '15 nodes, 4 sensors, every pattern used — this is the <b>Hamming(15,11) code</b>, the 4-bit generalization of Level 3. In real memory systems it locates and corrects any single-bit error across 11 data bits using just 4 parity checks. Assign each node the unique 4-bit binary pattern matching its position: 0001, 0010, 0011 … 1111.',
+    sensorBudget: 4,
+    nodes: (() => {
+      const lab = 'ABCDEFGHIJKLMNO'.split('');
+      const inner = pts_circle(5, 350, 225, 92);
+      const outer  = pts_circle(10, 350, 225, 190, -Math.PI / 2 + Math.PI / 10);
+      return [...inner, ...outer].map((p, i) => ({ id: i, ...p, label: lab[i] }));
+    })(),
+  },
 ];
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -670,7 +707,7 @@ function drawCollisionArc(na, nb) {
 function drawIsolatedWarning(node) {
   const t = S.successT;
   const pulse = 0.5 + 0.5 * Math.sin(t * 0.005);
-  const wx = node.x, wy = node.y - 46;
+  const wx = node.x, wy = node.y < 70 ? node.y + 46 : node.y - 46;
   ctx.beginPath();
   ctx.arc(wx, wy, 12, 0, Math.PI * 2);
   ctx.fillStyle = `rgba(255,140,0,${0.12 + 0.08 * pulse})`;
