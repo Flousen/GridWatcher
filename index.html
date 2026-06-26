@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grid Watcher: The Glitch Puzzle</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #050510;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 16px 20px 30px;
+  user-select: none;
+}
+
+h1 {
+  color: #00ffff;
+  font-size: 1.7em;
+  text-shadow: 0 0 24px #00ffff88, 0 0 4px #00ffff;
+  letter-spacing: 4px;
+  margin-bottom: 2px;
+}
+
+.subtitle {
+  color: #336677;
+  font-size: 0.72em;
+  letter-spacing: 3px;
+  margin-bottom: 14px;
+}
+
+#hud {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hud-chip {
+  background: rgba(0,255,255,0.04);
+  border: 1px solid rgba(0,255,255,0.18);
+  border-radius: 5px;
+  padding: 5px 14px;
+  font-size: 0.78em;
+  color: #4488aa;
+  letter-spacing: 1px;
+}
+.hud-chip b { color: #00eeff; }
+
+#level-title {
+  color: #9900ff;
+  font-size: 0.78em;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px #9900ff88;
+}
+
+canvas {
+  display: block;
+  border: 1px solid rgba(0,255,255,0.14);
+  border-radius: 10px;
+  background: #050510;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+#controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+button {
+  padding: 9px 22px;
+  border: none;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.82em;
+  font-weight: bold;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-transform: uppercase;
+  outline: none;
+}
+
+#btn-test {
+  background: #006633;
+  color: #00ff88;
+  border: 1px solid #009944;
+}
+#btn-test:hover:not(:disabled) {
+  background: #008844;
+  box-shadow: 0 0 18px #00ff8866;
+  color: #00ffaa;
+}
+#btn-test:disabled { opacity: 0.35; cursor: not-allowed; }
+
+#btn-reset {
+  background: rgba(255,255,255,0.04);
+  color: #667788;
+  border: 1px solid #334455;
+}
+#btn-reset:hover { background: rgba(255,255,255,0.08); color: #99aabb; }
+
+#btn-next {
+  background: #330066;
+  color: #cc88ff;
+  border: 1px solid #6600cc;
+  display: none;
+}
+#btn-next:hover {
+  background: #440088;
+  box-shadow: 0 0 18px #9900ff66;
+  color: #dd99ff;
+}
+
+#status-bar {
+  margin-top: 10px;
+  font-size: 0.82em;
+  color: #445566;
+  text-align: center;
+  min-height: 22px;
+  letter-spacing: 1px;
+  transition: color 0.3s;
+  max-width: 700px;
+}
+#status-bar.success { color: #00ff88; text-shadow: 0 0 10px #00ff8888; }
+#status-bar.error   { color: #ff4444; text-shadow: 0 0 10px #ff000088; }
+#status-bar.info    { color: #00bbdd; }
+#status-bar.warn    { color: #ffaa00; }
+
+#log-wrap {
+  margin-top: 14px;
+  width: min(700px, 96vw);
+}
+
+#log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+  margin-bottom: 6px;
+}
+#log-label { color: #334455; font-size: 0.72em; letter-spacing: 2px; }
+#legend { color: #334455; font-size: 0.68em; }
+
+#log-entries {
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(0,255,255,0.08);
+  border-radius: 8px;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow-y: auto;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82em;
+  padding: 4px 6px;
+  border-radius: 4px;
+  animation: slideIn 0.25s ease;
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.log-row .nid  { color: #00aacc; font-weight: bold; min-width: 64px; }
+.log-row .pat  { color: #00ffcc; background: rgba(0,200,150,0.08); border: 1px solid rgba(0,200,150,0.25); border-radius: 4px; padding: 2px 10px; font-size: 0.92em; flex: 1; }
+.log-row.empty .pat  { color: #884444; border-color: rgba(255,80,80,0.25); background: rgba(255,0,0,0.05); }
+.log-row.collide .nid { color: #ff4444; }
+.log-row.collide .pat { color: #ff6666; border-color: rgba(255,80,80,0.4); background: rgba(255,0,0,0.1); }
+
+.hint-bar {
+  margin-top: 10px;
+  font-size: 0.72em;
+  color: #334455;
+  text-align: center;
+  letter-spacing: 1px;
+  max-width: 700px;
+}
+
+.instructions {
+  background: rgba(0,204,255,0.03);
+  border: 1px solid rgba(0,204,255,0.1);
+  border-radius: 8px;
+  padding: 10px 18px;
+  margin-bottom: 12px;
+  font-size: 0.73em;
+  color: #556677;
+  line-height: 1.9;
+  width: min(700px, 96vw);
+}
+.instructions b { color: #0099bb; }
+.instructions .key { background: rgba(0,200,255,0.1); border: 1px solid rgba(0,200,255,0.25); border-radius: 3px; padding: 1px 6px; color: #00aacc; }
+</style>
+</head>
+<body>
+
+<h1>GRID WATCHER</h1>
+<div class="subtitle">// THE GLITCH PUZZLE //</div>
+
+<div class="instructions">
+  <b>CLICK</b> empty space → place <span style="color:#bb44ff">Sensor</span> &nbsp;|&nbsp;
+  <b>CLICK</b> Sensor → select it &nbsp;|&nbsp;
+  <b>CLICK</b> Node (while Sensor selected) → toggle connection &nbsp;|&nbsp;
+  <span class="key">RIGHT-CLICK</span> Sensor → remove it &nbsp;|&nbsp;
+  Hit <b>TEST</b> to verify every Node gets a unique alarm pattern.
+</div>
+
+<div id="hud">
+  <div class="hud-chip">LEVEL <b id="hl-num">1</b></div>
+  <div class="hud-chip">NODES <b id="hl-nodes">3</b></div>
+  <div class="hud-chip">SENSORS LEFT <b id="hl-budget">2</b></div>
+  <div class="hud-chip" id="level-title">BINARY BASICS</div>
+  <div class="hud-chip" id="hl-phase">BUILD</div>
+</div>
+
+<canvas id="gc" width="700" height="460"></canvas>
+
+<div id="controls">
+  <button id="btn-reset">↺ RESET</button>
+  <button id="btn-test">▶ TEST</button>
+  <button id="btn-next">NEXT LEVEL →</button>
+</div>
+
+<div id="status-bar" class="info">Place Sensors, connect them to Data Nodes, then hit TEST.</div>
+
+<div id="log-wrap">
+  <div id="log-header">
+    <span id="log-label">// ALARM PATTERN LOG //</span>
+    <span id="legend"></span>
+  </div>
+  <div id="log-entries"></div>
+</div>
+
+<div class="hint-bar" id="hint-bar"></div>
+
+<script>
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// ── Colours ───────────────────────────────────────────────────────────────────
+const C = {
+  nodeFill:    'rgba(0,170,204,0.07)',
+  nodeStroke:  '#00aacc',
+  nodeBright:  '#00eeff',
+  nodeGlow:    '#00ffff',
+  nodeGlitch:  '#ff2222',
+  nodeGlitchG: '#ff4444',
+
+  sensorFill:  'rgba(140,0,220,0.10)',
+  sensorStr:   '#aa00ee',
+  sensorBrt:   '#cc44ff',
+  sensorGlow:  '#dd00ff',
+  sensorSel:   '#ffee00',
+  sensorSelG:  '#ffff66',
+
+  connIdle:    '#113355',
+  connActive:  '#00ddaa',
+  connSuccess: '#00ff88',
+
+  collide:     '#ff3333',
+  success:     '#00ff88',
+  text:        '#ffffff',
+  dimText:     '#445566',
+  grid:        'rgba(0,220,255,0.03)',
+};
+
+// ── Level data ────────────────────────────────────────────────────────────────
+function pts_circle(n, cx, cy, r, startAngle = -Math.PI/2) {
+  return Array.from({length: n}, (_, i) => {
+    const a = startAngle + i * 2 * Math.PI / n;
+    return { x: Math.round(cx + r * Math.cos(a)), y: Math.round(cy + r * Math.sin(a)) };
+  });
+}
+
+const LEVELS = [
+  {
+    id: 1,
+    title: 'BINARY BASICS',
+    hint: 'TIP: 2 sensors → 3 unique patterns (01, 10, 11). Connect wisely!',
+    sensorBudget: 2,
+    nodes: (() => {
+      const lab = ['A','B','C'];
+      const ps = [{ x:350, y:110 }, { x:200, y:360 }, { x:500, y:360 }];
+      return ps.map((p,i) => ({ id:i, ...p, label:lab[i] }));
+    })(),
+  },
+  {
+    id: 2,
+    title: 'PENTAGON PROTOCOL',
+    hint: 'TIP: 3 sensors → up to 7 unique patterns. You need 5 of them.',
+    sensorBudget: 3,
+    nodes: (() => {
+      const lab = ['A','B','C','D','E'];
+      return pts_circle(5, 350, 230, 165).map((p,i) => ({ id:i, ...p, label:lab[i] }));
+    })(),
+  },
+  {
+    id: 3,
+    title: 'HAMMING GRID',
+    hint: 'TIP: This IS the Hamming Code. Assign each node one of the 7 binary patterns from 001 to 111.',
+    sensorBudget: 3,
+    nodes: (() => {
+      const lab = ['A','B','C','D','E','F','G'];
+      return pts_circle(7, 350, 228, 170).map((p,i) => ({ id:i, ...p, label:lab[i] }));
+    })(),
+  },
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let S = {};
+
+function initLevel(idx) {
+  const lv = LEVELS[idx];
+  S = {
+    lvIdx:    idx,
+    phase:    'build',   // 'build' | 'testing' | 'done'
+    nodes:    lv.nodes.map(n => ({ ...n })),
+    sensors:  [],
+    conns:    new Map(), // sensorId → Set<nodeId>
+    budget:   lv.sensorBudget,
+    selId:    null,      // selected sensor id
+    nextId:   0,
+    testAnim: null,      // { nodeId, triggered: [] }
+    results:  [],
+    collision:null,      // { n1, n2 } or { n1, isolated:true }
+    successT: 0,
+  };
+  setPhaseLabel('BUILD');
+  updateHUD();
+  setStatus('Place Sensors, connect them to Data Nodes, then hit TEST.', 'info');
+  clearLog();
+  el('btn-next').style.display = 'none';
+  el('btn-test').disabled = false;
+  el('hint-bar').textContent = lv.hint;
+  el('level-title').textContent = lv.title;
+  render();
+}
+
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+const el = id => document.getElementById(id);
+
+function updateHUD() {
+  el('hl-num').textContent    = LEVELS[S.lvIdx].id;
+  el('hl-nodes').textContent  = S.nodes.length;
+  el('hl-budget').textContent = S.budget;
+}
+
+function setStatus(msg, cls='') {
+  const sb = el('status-bar');
+  sb.textContent = msg;
+  sb.className = cls;
+}
+
+function setPhaseLabel(txt) {
+  el('hl-phase').textContent = txt;
+}
+
+function clearLog() {
+  el('log-entries').innerHTML = '';
+  el('legend').textContent = '';
+}
+
+function addLogRow(nodeLabel, triggeredIds, isCollide, isEmpty) {
+  const row = document.createElement('div');
+  row.className = 'log-row' + (isCollide ? ' collide' : isEmpty ? ' empty' : '');
+  row.dataset.lbl = nodeLabel;
+
+  let patStr;
+  if (isEmpty) {
+    patStr = '∅ NO SENSORS TRIGGERED';
+  } else {
+    patStr = triggeredIds.map(id => `S${id+1}`).join(' ⊕ ') + '   [' + triggeredIds.map(i=>i+1).join('') + ']';
+  }
+
+  row.innerHTML = `<span class="nid">Node ${nodeLabel}</span><span class="pat">${patStr}</span>`;
+  el('log-entries').appendChild(row);
+  el('log-entries').scrollTop = 9999;
+}
+
+// ── Drawing helpers ───────────────────────────────────────────────────────────
+function glow(col, blur) { ctx.shadowColor = col; ctx.shadowBlur = blur; }
+function noGlow()        { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; }
+
+function drawGrid() {
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  const g = 40;
+  for (let x = 0; x <= W; x += g) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += g) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+}
+
+function drawConn(x1, y1, x2, y2, col, glowCol, glowAmt, w = 2) {
+  ctx.lineWidth = w;
+  ctx.strokeStyle = col;
+  ctx.setLineDash([]);
+  glow(glowCol, glowAmt);
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  noGlow();
+}
+
+function drawDashedConn(x1, y1, x2, y2) {
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = C.connActive;
+  ctx.setLineDash([8, 5]);
+  glow(C.connActive, 8);
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.setLineDash([]);
+  noGlow();
+}
+
+function drawNode(node, state) {
+  // state: 'idle'|'selected'|'glitch'|'collide'|'success'
+  const { x, y, label } = node;
+  const t = S.successT;
+
+  let strokeCol, fillCol, glowCol, glowAmt, textCol;
+
+  switch (state) {
+    case 'glitch':
+      strokeCol = C.nodeGlitch; fillCol = 'rgba(255,0,0,0.15)';
+      glowCol = C.nodeGlitchG; glowAmt = 28; textCol = '#ff6666';
+      break;
+    case 'collide':
+      strokeCol = C.collide; fillCol = 'rgba(255,0,0,0.12)';
+      glowCol = C.collide; glowAmt = 22; textCol = '#ff6666';
+      break;
+    case 'success': {
+      const pulse = 0.6 + 0.4 * Math.sin(t * 0.006 + node.id * 0.7);
+      strokeCol = C.success; fillCol = `rgba(0,255,136,${0.06 * pulse})`;
+      glowCol = C.success; glowAmt = 18 * pulse; textCol = C.success;
+      break;
+    }
+    default:
+      strokeCol = C.nodeStroke; fillCol = C.nodeFill;
+      glowCol = C.nodeGlow; glowAmt = 10; textCol = C.text;
+  }
+
+  const R = 27;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = strokeCol;
+  ctx.fillStyle = fillCol;
+  glow(glowCol, glowAmt);
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // inner ring
+  noGlow();
+  ctx.strokeStyle = strokeCol + '55';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x, y, R - 8, 0, Math.PI*2); ctx.stroke();
+
+  // label
+  ctx.fillStyle = textCol;
+  ctx.font = 'bold 15px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (state !== 'idle') glow(glowCol, 12);
+  ctx.fillText(label, x, y);
+  noGlow();
+}
+
+function drawSensor(sensor, state) {
+  // state: 'idle'|'selected'|'triggered'|'collide'|'success'
+  const { x, y, id } = sensor;
+  const label = `S${id+1}`;
+  const t = S.successT;
+
+  let strokeCol, fillCol, glowCol, glowAmt, textCol;
+
+  switch (state) {
+    case 'selected':
+      strokeCol = C.sensorSel; fillCol = 'rgba(255,238,0,0.10)';
+      glowCol = C.sensorSelG; glowAmt = 26; textCol = C.sensorSel;
+      break;
+    case 'triggered':
+      strokeCol = C.nodeGlitch; fillCol = 'rgba(255,0,0,0.15)';
+      glowCol = '#ff4444'; glowAmt = 28; textCol = '#ff6666';
+      break;
+    case 'collide':
+      strokeCol = C.collide; fillCol = 'rgba(255,0,0,0.12)';
+      glowCol = C.collide; glowAmt = 22; textCol = '#ff6666';
+      break;
+    case 'success': {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.006 + id * 1.1 + 1.5);
+      strokeCol = C.success; fillCol = `rgba(0,255,136,${0.07 * pulse})`;
+      glowCol = C.success; glowAmt = 16 * pulse; textCol = C.success;
+      break;
+    }
+    default:
+      strokeCol = C.sensorStr; fillCol = C.sensorFill;
+      glowCol = C.sensorGlow; glowAmt = 10; textCol = C.sensorBrt;
+  }
+
+  const S2 = 20;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.PI / 4);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = strokeCol;
+  ctx.fillStyle = fillCol;
+  glow(glowCol, glowAmt);
+  ctx.beginPath(); ctx.rect(-S2, -S2, S2*2, S2*2); ctx.fill(); ctx.stroke();
+  noGlow();
+  ctx.restore();
+
+  ctx.fillStyle = textCol;
+  ctx.font = 'bold 12px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (state !== 'idle') glow(glowCol, 10);
+  ctx.fillText(label, x, y);
+  noGlow();
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+let mouseXY = null;
+
+function render(ts = 0) {
+  ctx.clearRect(0, 0, W, H);
+  drawGrid();
+
+  const { phase, nodes, sensors, conns, selId, testAnim, collision, results } = S;
+  const isTest    = phase === 'testing';
+  const isDone    = phase === 'done';
+  const isSuccess = isDone && !collision;
+
+  // ── Which sensors are triggered right now (during test anim) ──
+  const triggeredSet = new Set();
+  const glitchNodeId = isTest && testAnim ? testAnim.nodeId : -1;
+  if (glitchNodeId >= 0) {
+    for (const [sid, cs] of conns) {
+      if (cs.has(glitchNodeId)) triggeredSet.add(sid);
+    }
+  }
+
+  // ── Collision sets ──
+  const collideNodeIds = new Set();
+  const collideSensorIds = new Set();
+  if (isDone && collision) {
+    if (collision.n1 >= 0) collideNodeIds.add(collision.n1);
+    if (!collision.isolated && collision.n2 >= 0) collideNodeIds.add(collision.n2);
+    // Mark sensors connected to colliding nodes
+    for (const nid of collideNodeIds) {
+      for (const [sid, cs] of conns) {
+        if (cs.has(nid)) collideSensorIds.add(sid);
+      }
+    }
+  }
+
+  // ── Draw connections ──
+  for (const sensor of sensors) {
+    const cs = conns.get(sensor.id) || new Set();
+    const sTriggered = triggeredSet.has(sensor.id);
+    const sCollide   = collideSensorIds.has(sensor.id);
+
+    for (const nid of cs) {
+      const node = nodes[nid];
+      const nGlitch  = glitchNodeId === nid;
+      const nCollide = collideNodeIds.has(nid);
+      const active   = sTriggered && (nGlitch || glitchNodeId < 0);
+
+      let col, gc, ga, w;
+      if (isDone && collision && (sCollide || nCollide)) {
+        col = C.collide + '88'; gc = C.collide; ga = 12; w = 2;
+      } else if (isSuccess) {
+        const pulse = 0.4 + 0.4 * Math.sin(S.successT * 0.005 + sensor.id * 0.9);
+        col = C.connSuccess + 'aa'; gc = C.connSuccess; ga = 10 * pulse; w = 2;
+      } else if (active) {
+        col = C.connActive; gc = C.connActive; ga = 14; w = 2.5;
+      } else {
+        col = C.connIdle; gc = 'transparent'; ga = 0; w = 1.5;
+      }
+      drawConn(sensor.x, sensor.y, node.x, node.y, col, gc, ga, w);
+    }
+  }
+
+  // ── Hover drag line ──
+  if (phase === 'build' && selId !== null && mouseXY) {
+    const sel = sensors.find(s => s.id === selId);
+    if (sel) drawDashedConn(sel.x, sel.y, mouseXY.x, mouseXY.y);
+  }
+
+  // ── Draw nodes ──
+  for (const node of nodes) {
+    let ns;
+    if (glitchNodeId === node.id)         ns = 'glitch';
+    else if (collideNodeIds.has(node.id)) ns = 'collide';
+    else if (isSuccess)                   ns = 'success';
+    else                                  ns = 'idle';
+    drawNode(node, ns);
+  }
+
+  // ── Draw sensors ──
+  for (const sensor of sensors) {
+    let ss;
+    if (triggeredSet.has(sensor.id))       ss = 'triggered';
+    else if (collideSensorIds.has(sensor.id)) ss = 'collide';
+    else if (isSuccess)                    ss = 'success';
+    else if (selId === sensor.id)          ss = 'selected';
+    else                                   ss = 'idle';
+    drawSensor(sensor, ss);
+  }
+
+  // ── Success overlay text ──
+  if (isSuccess) {
+    const pulse = 0.7 + 0.3 * Math.sin(S.successT * 0.005);
+    ctx.globalAlpha = pulse;
+    glow(C.success, 25);
+    ctx.fillStyle = C.success;
+    ctx.font = 'bold 26px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('✓  ALL PATTERNS UNIQUE', W/2, H/2);
+    noGlow();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ── Animation loop ────────────────────────────────────────────────────────────
+let rafId = null;
+function startLoop() {
+  if (rafId) return;
+  function loop(ts) {
+    S.successT = ts;
+    render(ts);
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+function stopLoop() {
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  render();
+}
+
+// ── Hit testing ───────────────────────────────────────────────────────────────
+const HIT = 34;
+function hitNode(x, y) {
+  for (const n of S.nodes) {
+    if ((n.x-x)**2 + (n.y-y)**2 <= HIT**2) return n;
+  }
+  return null;
+}
+function hitSensor(x, y) {
+  for (const s of S.sensors) {
+    if ((s.x-x)**2 + (s.y-y)**2 <= HIT**2) return s;
+  }
+  return null;
+}
+function cPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const sx = W / r.width, sy = H / r.height;
+  const src = e.touches ? e.touches[0] : e;
+  return { x: (src.clientX - r.left) * sx, y: (src.clientY - r.top) * sy };
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  mouseXY = cPos(e);
+  if (S.phase === 'build') render();
+});
+canvas.addEventListener('mouseleave', () => { mouseXY = null; });
+
+canvas.addEventListener('click', e => {
+  if (S.phase !== 'build') return;
+  const p = cPos(e);
+
+  const hs = hitSensor(p.x, p.y);
+  if (hs) {
+    S.selId = (S.selId === hs.id) ? null : hs.id;
+    render(); return;
+  }
+
+  const hn = hitNode(p.x, p.y);
+  if (hn && S.selId !== null) {
+    const sid = S.selId;
+    if (!S.conns.has(sid)) S.conns.set(sid, new Set());
+    const cs = S.conns.get(sid);
+    if (cs.has(hn.id)) {
+      cs.delete(hn.id);
+    } else {
+      if (cs.size >= 4) { setStatus('Max 4 connections per Sensor.', 'warn'); return; }
+      cs.add(hn.id);
+    }
+    render(); return;
+  }
+
+  // Place new sensor
+  if (!hn && S.budget > 0) {
+    const ns = { id: S.nextId++, x: p.x, y: p.y };
+    S.sensors.push(ns);
+    S.conns.set(ns.id, new Set());
+    S.budget--;
+    S.selId = ns.id;
+    updateHUD();
+    render(); return;
+  }
+
+  if (!hn && S.budget === 0 && !hs) {
+    setStatus('No sensors left! Right-click a Sensor to remove it.', 'warn');
+  }
+
+  S.selId = null;
+  render();
+});
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (S.phase !== 'build') return;
+  const p = cPos(e);
+  const hs = hitSensor(p.x, p.y);
+  if (!hs) return;
+  S.sensors = S.sensors.filter(s => s.id !== hs.id);
+  S.conns.delete(hs.id);
+  S.budget++;
+  if (S.selId === hs.id) S.selId = null;
+  updateHUD();
+  setStatus(`Removed Sensor S${hs.id+1}.`, 'info');
+  render();
+});
+
+// Touch support
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  canvas.dispatchEvent(new MouseEvent('click', {
+    clientX: e.touches[0].clientX, clientY: e.touches[0].clientY
+  }));
+}, { passive: false });
+
+// ── Test logic ────────────────────────────────────────────────────────────────
+function runTest() {
+  if (S.phase !== 'build') return;
+  if (S.sensors.length === 0) {
+    setStatus('Place at least one Sensor first.', 'error'); return;
+  }
+
+  S.phase = 'testing';
+  S.results = [];
+  S.collision = null;
+  S.selId = null;
+  clearLog();
+  el('btn-test').disabled = true;
+  el('btn-next').style.display = 'none';
+  setPhaseLabel('TESTING');
+  setStatus('Running simulation…', 'info');
+  render();
+
+  let i = 0;
+  const DELAY = 750;
+
+  function step() {
+    if (i >= S.nodes.length) {
+      S.testAnim = null;
+      finish();
+      return;
+    }
+
+    const node = S.nodes[i];
+    const triggered = [];
+    for (const [sid, cs] of S.conns) {
+      if (cs.has(node.id)) triggered.push(sid);
+    }
+    triggered.sort((a, b) => a - b);
+    const key = triggered.join(',');
+
+    S.testAnim = { nodeId: node.id, triggered };
+    S.results.push({ nodeId: node.id, triggered, key });
+
+    const isEmpty = triggered.length === 0;
+    addLogRow(node.label, triggered, false, isEmpty);
+    setStatus(`Simulating glitch on Node ${node.label}…`, 'info');
+    render();
+    i++;
+    setTimeout(step, DELAY);
+  }
+
+  setTimeout(step, 300);
+}
+
+function finish() {
+  setPhaseLabel('DONE');
+  S.phase = 'done';
+
+  // Detect duplicates / isolated nodes
+  const seen = new Map(); // key → nodeId
+  let col = null;
+
+  for (const r of S.results) {
+    if (r.key === '') {
+      col = { n1: r.nodeId, n2: -1, isolated: true };
+      break;
+    }
+    if (seen.has(r.key)) {
+      col = { n1: seen.get(r.key), n2: r.nodeId };
+      break;
+    }
+    seen.set(r.key, r.nodeId);
+  }
+
+  S.collision = col;
+  el('btn-test').disabled = false;
+
+  if (col) {
+    // Mark collide rows in log
+    const rows = el('log-entries').querySelectorAll('.log-row');
+    if (col.isolated) {
+      const lbl = S.nodes[col.n1].label;
+      rows.forEach(r => { if (r.dataset.lbl === lbl) r.classList.add('collide'); });
+      setStatus(`✗ Node ${lbl} triggers NO sensors — glitch undetectable!`, 'error');
+    } else {
+      const l1 = S.nodes[col.n1].label, l2 = S.nodes[col.n2].label;
+      rows.forEach(r => { if (r.dataset.lbl === l1 || r.dataset.lbl === l2) r.classList.add('collide'); });
+      setStatus(`✗ COLLISION DETECTED — Nodes ${l1} & ${l2} share the same alarm pattern!`, 'error');
+    }
+    render();
+  } else {
+    setStatus('✓ ALL PATTERNS UNIQUE — Level Complete!', 'success');
+    if (S.lvIdx < LEVELS.length - 1) {
+      el('btn-next').style.display = 'inline-block';
+    } else {
+      setStatus('✓ ALL PATTERNS UNIQUE — You completed all levels!', 'success');
+    }
+    startLoop(); // pulsing success animation
+  }
+}
+
+// ── Buttons ───────────────────────────────────────────────────────────────────
+el('btn-test').addEventListener('click', runTest);
+el('btn-reset').addEventListener('click', () => {
+  stopLoop();
+  initLevel(S.lvIdx);
+});
+el('btn-next').addEventListener('click', () => {
+  stopLoop();
+  if (S.lvIdx < LEVELS.length - 1) initLevel(S.lvIdx + 1);
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+initLevel(0);
+</script>
+</body>
+</html>
