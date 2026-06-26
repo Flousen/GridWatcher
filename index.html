@@ -195,19 +195,61 @@ button {
   max-width: 700px;
 }
 
-.instructions {
+
+details#concept-panel {
   background: rgba(0,204,255,0.03);
   border: 1px solid rgba(0,204,255,0.1);
   border-radius: 8px;
-  padding: 10px 18px;
   margin-bottom: 12px;
+  width: min(700px, 96vw);
+}
+details#concept-panel summary {
+  padding: 8px 18px;
+  cursor: pointer;
+  color: #0099bb;
+  font-size: 0.75em;
+  letter-spacing: 2px;
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+details#concept-panel summary::-webkit-details-marker { display: none; }
+details#concept-panel summary::before {
+  content: '▶';
+  font-size: 0.8em;
+  transition: transform 0.2s;
+  color: #006688;
+  display: inline-block;
+}
+details#concept-panel[open] summary::before { transform: rotate(90deg); }
+.concept-body {
+  padding: 0 18px 12px;
   font-size: 0.73em;
   color: #556677;
   line-height: 1.9;
-  width: min(700px, 96vw);
 }
-.instructions b { color: #0099bb; }
-.instructions .key { background: rgba(0,200,255,0.1); border: 1px solid rgba(0,200,255,0.25); border-radius: 3px; padding: 1px 6px; color: #00aacc; }
+.concept-body b { color: #0099bb; }
+.concept-level-intro {
+  color: #4a6a7a;
+  border-left: 2px solid rgba(0,204,255,0.2);
+  padding-left: 10px;
+  margin-bottom: 8px;
+}
+.concept-divider {
+  border: none;
+  border-top: 1px solid rgba(0,204,255,0.08);
+  margin: 8px 0;
+}
+.concept-body .key {
+  background: rgba(0,200,255,0.1);
+  border: 1px solid rgba(0,200,255,0.25);
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: #00aacc;
+}
+
 </style>
 </head>
 <body>
@@ -215,13 +257,19 @@ button {
 <h1>GRID WATCHER</h1>
 <div class="subtitle">// THE GLITCH PUZZLE //</div>
 
-<div class="instructions">
-  <b>CLICK</b> empty space → place <span style="color:#bb44ff">Sensor</span> &nbsp;|&nbsp;
-  <b>CLICK</b> Sensor to select it, then <b>CLICK</b> any <span style="color:#00ccff">Data Node</span> to connect them &nbsp;|&nbsp;
-  <b style="color:#ffee00">One Sensor can connect to multiple Nodes at once</b> — click again to disconnect &nbsp;|&nbsp;
-  <span class="key">RIGHT-CLICK</span> Sensor → remove it &nbsp;|&nbsp;
-  Hit <b>TEST</b> to verify every Node triggers a unique alarm pattern.
-</div>
+<details id="concept-panel" open>
+  <summary>HOW IT WORKS</summary>
+  <div class="concept-body">
+    <div id="concept-level-text" class="concept-level-intro"></div>
+    <div class="concept-divider"></div>
+    <b>CONTROLS</b> &nbsp;—&nbsp;
+    <b>CLICK</b> empty space → place <span style="color:#bb44ff">Sensor</span> (diamond) &nbsp;|&nbsp;
+    <b>CLICK</b> Sensor to select it (glows yellow), then <b>CLICK</b> any <span style="color:#00ccff">Node</span> to connect — click again to disconnect &nbsp;|&nbsp;
+    <b style="color:#ffee00">One Sensor can link to multiple Nodes</b> &nbsp;|&nbsp;
+    <span class="key">RIGHT-CLICK</span> Sensor → remove it &nbsp;|&nbsp;
+    <b>TEST</b> → run the simulation
+  </div>
+</details>
 
 <div id="hud">
   <div class="hud-chip">LEVEL <b id="hl-num">1</b></div>
@@ -240,6 +288,7 @@ button {
 </div>
 
 <div id="status-bar" class="info">Place Sensors, connect them to Data Nodes, then hit TEST.</div>
+
 
 <div id="log-wrap">
   <div id="log-header">
@@ -297,6 +346,7 @@ const LEVELS = [
     id: 1,
     title: 'BINARY BASICS',
     hint: 'TIP: Each Sensor can connect to multiple Nodes. 2 sensors give 3 patterns: S1 alone, S2 alone, or S1+S2 together.',
+    explain: 'You monitor a network of <b>Data Nodes</b> — any of them can glitch (malfunction). When a node glitches, every <b>Sensor wired to it</b> fires an alarm. Your goal: wire Sensors so each Node triggers a <b>unique combination</b> of alarms. That way, when alarms ring, you know exactly which node failed — no ambiguity. With 2 Sensors there are <b>3 possible non-empty patterns</b>: {S1}, {S2}, and {S1+S2}. Assign one to each of the 3 Nodes.',
     sensorBudget: 2,
     nodes: (() => {
       const lab = ['A','B','C'];
@@ -308,6 +358,7 @@ const LEVELS = [
     id: 2,
     title: 'PENTAGON PROTOCOL',
     hint: 'TIP: 3 sensors → up to 7 unique patterns. You need 5 of them.',
+    explain: '3 Sensors can produce up to <b>7 unique patterns</b> (2³ − 1 = 7 non-empty subsets). Think of each node\'s pattern as a binary number — which sensors fire (1) or stay silent (0). For example, only S1 fires → pattern <b>100</b>; S1 and S3 fire → pattern <b>101</b>. You need 5 distinct patterns for 5 Nodes — many valid wiring plans exist.',
     sensorBudget: 3,
     nodes: (() => {
       const lab = ['A','B','C','D','E'];
@@ -318,6 +369,7 @@ const LEVELS = [
     id: 3,
     title: 'HAMMING GRID',
     hint: 'TIP: This IS the Hamming Code. Assign each node one of the 7 binary patterns from 001 to 111.',
+    explain: '7 Nodes, 3 Sensors, 7 patterns — this puzzle is the <b>Hamming(7,4) error-correcting code</b>! In the real code, each bit position is labelled with a unique 3-bit binary number (001 through 111). When a bit flips (glitches), the sensors whose patterns cover that position all fire — and the <em>combination</em> of alarm signals pinpoints exactly which bit failed. This is the mathematical foundation of reliable data storage and memory correction in every computer.',
     sensorBudget: 3,
     nodes: (() => {
       const lab = ['A','B','C','D','E','F','G'];
@@ -353,6 +405,8 @@ function initLevel(idx) {
   el('btn-test').disabled = false;
   el('hint-bar').textContent = lv.hint;
   el('level-title').textContent = lv.title;
+  el('concept-level-text').innerHTML = lv.explain;
+  document.getElementById('concept-panel').open = (idx === 0);
   render();
 }
 
@@ -547,6 +601,91 @@ function drawSensor(sensor, state) {
   ctx.fillText(connCount, bx, by);
 }
 
+// ── Visual feedback helpers ───────────────────────────────────────────────────
+function drawPatternDots(node, triggeredIds, sortedSensors) {
+  const triggered = new Set(triggeredIds);
+  const n = sortedSensors.length;
+  if (n === 0) return;
+  const dotR = 4, spacing = 12;
+  const startX = node.x - ((n - 1) * spacing) / 2;
+  const baseY = node.y + 36;
+  const isSucc = S.phase === 'done' && !S.collision;
+
+  for (let i = 0; i < n; i++) {
+    const active = triggered.has(sortedSensors[i].id);
+    ctx.beginPath();
+    ctx.arc(startX + i * spacing, baseY, dotR, 0, Math.PI * 2);
+    if (active) {
+      ctx.fillStyle   = isSucc ? '#00ff88' : '#cc44ff';
+      ctx.strokeStyle = isSucc ? '#00ffaa' : '#ee66ff';
+      glow(isSucc ? '#00ff88' : '#dd00ff', 8);
+    } else {
+      ctx.fillStyle   = 'rgba(20,0,30,0.5)';
+      ctx.strokeStyle = '#443355';
+    }
+    ctx.lineWidth = 1;
+    ctx.fill(); ctx.stroke();
+    noGlow();
+  }
+}
+
+function drawCollisionArc(na, nb) {
+  const t = S.successT;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 0.004);
+  const mx = (na.x + nb.x) / 2, my = (na.y + nb.y) / 2;
+  const dx = nb.x - na.x, dy = nb.y - na.y;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  const bulge = Math.min(70, len * 0.45);
+  const cpx = mx + (-dy / len) * bulge, cpy = my + (dx / len) * bulge;
+
+  ctx.beginPath();
+  ctx.moveTo(na.x, na.y);
+  ctx.quadraticCurveTo(cpx, cpy, nb.x, nb.y);
+  ctx.strokeStyle = `rgba(255,60,60,${0.35 + 0.3 * pulse})`;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  glow('#ff3333', 10 * pulse);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  noGlow();
+
+  // "=" badge at arc midpoint
+  const bx = 0.25*na.x + 0.5*cpx + 0.25*nb.x;
+  const by = 0.25*na.y + 0.5*cpy + 0.25*nb.y;
+  ctx.beginPath();
+  ctx.arc(bx, by, 11, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255,0,0,0.18)`;
+  ctx.strokeStyle = `rgba(255,60,60,${0.5 + 0.4 * pulse})`;
+  ctx.lineWidth = 1.5;
+  glow('#ff3333', 8 * pulse);
+  ctx.fill(); ctx.stroke();
+  noGlow();
+  ctx.fillStyle = `rgba(255,120,120,${0.8 + 0.2 * pulse})`;
+  ctx.font = 'bold 13px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('=', bx, by);
+}
+
+function drawIsolatedWarning(node) {
+  const t = S.successT;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 0.005);
+  const wx = node.x, wy = node.y - 46;
+  ctx.beginPath();
+  ctx.arc(wx, wy, 12, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255,140,0,${0.12 + 0.08 * pulse})`;
+  ctx.strokeStyle = `rgba(255,160,0,${0.6 + 0.3 * pulse})`;
+  ctx.lineWidth = 1.5;
+  glow('#ffaa00', 14 * pulse);
+  ctx.fill(); ctx.stroke();
+  noGlow();
+  ctx.fillStyle = `rgba(255,200,50,${0.8 + 0.2 * pulse})`;
+  ctx.font = 'bold 14px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('!', wx, wy);
+}
+
 // ── Main render ───────────────────────────────────────────────────────────────
 let mouseXY = null;
 
@@ -625,6 +764,14 @@ function render(ts = 0) {
     drawNode(node, ns);
   }
 
+  // ── Pattern dots: show which sensors fired per node ──
+  if (isTest || isDone) {
+    const sortedSensors = [...sensors].sort((a, b) => a.id - b.id);
+    for (const result of S.results) {
+      drawPatternDots(nodes[result.nodeId], result.triggered, sortedSensors);
+    }
+  }
+
   // ── Draw sensors ──
   for (const sensor of sensors) {
     let ss;
@@ -634,6 +781,15 @@ function render(ts = 0) {
     else if (selId === sensor.id)          ss = 'selected';
     else                                   ss = 'idle';
     drawSensor(sensor, ss);
+  }
+
+  // ── Failure indicators ──
+  if (isDone && collision) {
+    if (collision.isolated) {
+      drawIsolatedWarning(nodes[collision.n1]);
+    } else {
+      drawCollisionArc(nodes[collision.n1], nodes[collision.n2]);
+    }
   }
 
   // ── Success overlay text ──
@@ -787,6 +943,7 @@ function runTest() {
   S.results = [];
   S.collision = null;
   S.selId = null;
+  stopLoop();
   clearLog();
   el('btn-test').disabled = true;
   el('btn-next').style.display = 'none';
@@ -826,6 +983,7 @@ function runTest() {
   setTimeout(step, 300);
 }
 
+
 function finish() {
   setPhaseLabel('DONE');
   S.phase = 'done';
@@ -861,7 +1019,7 @@ function finish() {
       rows.forEach(r => { if (r.dataset.lbl === l1 || r.dataset.lbl === l2) r.classList.add('collide'); });
       setStatus(`✗ COLLISION DETECTED — Nodes ${l1} & ${l2} share the same alarm pattern!`, 'error');
     }
-    render();
+    startLoop();
   } else {
     setStatus('✓ ALL PATTERNS UNIQUE — Level Complete!', 'success');
     if (S.lvIdx < LEVELS.length - 1) {
