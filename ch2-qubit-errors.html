@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Two Kinds of Glitch</title>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+#btn-glitch { color: var(--amber); border-color: #885500; }
+#btn-glitch:hover:not(:disabled) { box-shadow: 0 0 16px #ffaa0066; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="index.html">← MAP</a>
+  <div><div class="eyebrow">CHAPTER 2</div><h1>TWO KINDS OF GLITCH</h1></div>
+  <div class="levels" id="levels"></div>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <div class="hud">
+      <div class="chip">FIXED <b id="h-fixed">0/0</b></div>
+      <div class="chip">MOVES <b id="h-moves">0</b></div>
+    </div>
+    <canvas id="cv" width="480" height="480"></canvas>
+    <div class="controls" id="controls">
+      <button class="btn" id="btn-glitch">⚡ GLITCH</button>
+      <button class="btn tool-X" data-gate="X">X</button>
+      <button class="btn tool-Z" data-gate="Z">Z</button>
+      <button class="btn tool-Y" data-gate="Y">Y</button>
+      <button class="btn go" id="btn-measure">MEASURE</button>
+      <button class="btn" id="btn-prepare">PREPARE AGAIN</button>
+    </div>
+    <div class="legend">
+      <span><b style="color:var(--x-col)">X</b> mirror ↕ (bit flip)</span>
+      <span><b style="color:var(--z-col)">Z</b> mirror ↔ (phase flip)</span>
+      <span><b style="color:var(--y-col)">Y</b> half turn (both)</span>
+    </div>
+    <div class="status info" id="status"></div>
+  </section>
+  <aside class="bites" id="bites"></aside>
+</main>
+
+<script src="js/core/rng.js"></script>
+<script src="js/ui/progress.js"></script>
+<script src="js/ui/canvas.js"></script>
+<script src="js/ui/bites.js"></script>
+<script>
+'use strict';
+const { glow, noGlow, text } = QEC.ui;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const W = cv.width, CX = W / 2, CY = W / 2, R = 170;
+const rng = QEC.makeRng(QEC.randomSeed());
+const bites = new QEC.ui.Bites($('bites'));
+
+// ── Qubit as an arrow in the X–Z plane of the Bloch sphere ─────────────────
+// (x, z): z = +1 is |0⟩ (up), z = −1 is |1⟩ (down), x = ±1 is |±⟩.
+// For these real states the Pauli gates act exactly as mirrors:
+const GATES = {
+  X: v => ({ x: v.x, z: -v.z }),     // mirror across the horizontal axis
+  Z: v => ({ x: -v.x, z: v.z }),     // mirror across the vertical axis
+  Y: v => ({ x: -v.x, z: -v.z }),    // half turn
+};
+const fromAngle = deg => ({ x: Math.sin(deg * Math.PI / 180), z: Math.cos(deg * Math.PI / 180) });
+const same = (a, b) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.z - b.z) < 1e-9;
+
+// ── Levels ─────────────────────────────────────────────────────────────────
+const LEVELS = [
+  {
+    name: 'BIT FLIP', goal: 3, targets: [0, 180], errors: ['X'],
+    bites: [
+      'A classical bit is 0 or 1. A <b>qubit</b> is more like an arrow: up is <b>|0⟩</b>, down is <b>|1⟩</b>, and any angle in between is a mix of both — a <em>superposition</em>.',
+      { t: 'The dashed arrow shows what the qubit <em>should</em> be. Now let a glitch hit it.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'That was an <span class="x">X</span> error, a <b>bit flip</b>: it mirrors the arrow top↔bottom. Undo it by applying <span class="x">X</span> again.', wait: 'fixed', hint: 'press X' },
+      'X twice = nothing at all. That\'s the trick: <b>an error is undone by applying it again</b>.',
+      'Fix 3 bit flips to finish this level.',
+    ],
+  },
+  {
+    name: 'PHASE FLIP', goal: 3, targets: [90, 270], errors: ['Z'],
+    bites: [
+      'Qubits have a second way to break — one classical bits don\'t have.',
+      { t: 'Here is <b>|0⟩</b>. Apply <span class="z">Z</span>, the <b>phase flip</b>, and watch closely.', wait: 'gateZ', hint: 'press Z',
+        onShow: () => setupDemo(0) },
+      'Nothing moved! <span class="z">Z</span> mirrors left↔right, and an arrow pointing straight up is its own mirror image. Phase flips only show on superpositions.',
+      { t: 'So start at <b>|+⟩</b>, halfway between 0 and 1. Let it glitch.', wait: 'glitch', hint: 'press ⚡ GLITCH',
+        onShow: () => newRound() },
+      { t: 'It jumped to the other side (|+⟩ ↔ |−⟩): same 50/50 mix of 0 and 1, opposite <em>phase</em>. Undo it.', wait: 'fixed', hint: 'apply the right gate' },
+      'Fix 3 phase flips to finish this level.',
+    ],
+  },
+  {
+    name: 'MYSTERY', goal: 5, targets: [30, 60, 120, 150, 210, 240, 300, 330], errors: ['X', 'Z', 'Y'],
+    bites: [
+      'Now the arrow sits at an odd angle and the glitch can be anything: <span class="x">X</span>, <span class="z">Z</span>, or <span class="y">Y</span> — which is X and Z at once.',
+      'Compare the red arrow with the dashed one. Flipped top↔bottom? Left↔right? Both?',
+      'Every error is one of these three (or a mix you can build from them). Fix 5 glitches. Bonus points for doing it in one move.',
+    ],
+  },
+  {
+    name: 'NO PEEKING', goal: 0, targets: [60], errors: [],
+    bites: [
+      'Confession: you were cheating. A real quantum computer <b>can\'t see the arrow</b>.',
+      { t: 'The only way to look is to <b>measure</b>. Try it.', wait: 'measure', hint: 'press MEASURE', onShow: () => setupMeasure() },
+      'You get a single answer, 0 or 1, and the arrow <b>snaps</b> to it. The original angle is gone for good.',
+      { t: 'Prepare and measure a few more times. Same arrow, random answers.', wait: 'measure3', hint: 'measure 3 more times' },
+      'So we can\'t peek to find errors — peeking destroys the data. The way out: ask questions that reveal the <em>error</em> but not the <em>data</em>. That\'s Chapter 3.',
+    ],
+  },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let S = null;
+let anim = null;     // { from, to, t0, gate }
+let flash = -1e9;    // timestamp of last glitch flash
+let measureCount = 0;
+
+function startLevel(i) {
+  const lv = LEVELS[i];
+  S = { lv, idx: i, phase: 'ready', target: null, v: null, fixed: 0, moves: 0, perfect: 0, demo: false, measure: false };
+  measureCount = 0;
+  newRound();
+  bites.play(lv.bites, () => { if (lv.goal === 0 || S.goalReached) levelDone(); else updateUI(); });
+  updateUI();
+}
+
+function newRound() {
+  const deg = rng.pick(S.lv.targets);
+  S.target = fromAngle(deg);
+  S.v = { ...S.target };
+  S.phase = 'ready';
+  S.demo = false;
+  S.moves = 0;
+  setStatus(S.lv.goal ? 'Qubit is healthy. Press ⚡ GLITCH when ready.' : '', 'info');
+  updateUI();
+}
+
+function setupDemo(deg) {
+  S.target = fromAngle(deg);
+  S.v = { ...S.target };
+  S.phase = 'broken';
+  S.demo = true;
+  setStatus('Apply Z to |0⟩.', 'info');
+  updateUI();
+}
+
+function setupMeasure() {
+  S.target = fromAngle(60);
+  S.v = { ...S.target };
+  S.phase = 'measure';
+  setStatus('This arrow is mostly |0⟩, a bit of |1⟩.', 'info');
+  updateUI();
+}
+
+// Inputs are live only when a bite is waiting for the player, or after all bites are read.
+const canAct = () => bites.open;
+bites.onChange = () => { if (S) updateUI(); };
+
+function glitch() {
+  if (S.phase !== 'ready' || !canAct()) return;
+  const e = rng.pick(S.lv.errors);
+  move(GATES[e](S.v), null);
+  S.phase = 'broken';
+  flash = performance.now();
+  setStatus('⚡ Glitch! The qubit is no longer what it should be.', 'error');
+  bites.notify('glitch');
+  updateUI();
+}
+
+function applyGate(g) {
+  if (S.phase !== 'broken' || !canAct() || anim) return;
+  move(GATES[g](S.v), g);
+  if (S.demo) {
+    if (g === 'Z') { setStatus('Z applied to |0⟩ … and nothing changed.', 'warn'); bites.notify('gateZ'); }
+    return;
+  }
+  S.moves++;
+  if (same(S.v, S.target)) {
+    S.phase = 'fixed';
+    S.fixed++;
+    if (S.moves === 1) S.perfect++;
+    setStatus(S.moves === 1 ? '✓ Fixed in one move!' : `✓ Fixed (${S.moves} moves).`, 'success');
+    bites.notify('fixed');
+    updateUI();
+    if (S.fixed >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 700); }
+    else setTimeout(() => { if (S.phase === 'fixed') newRound(); }, 1100);
+  } else {
+    setStatus('Not there yet — compare with the dashed arrow.', 'warn');
+    updateUI();
+  }
+}
+
+function measure() {
+  if (S.phase !== 'measure' || anim) return;
+  const p0 = (1 + S.v.z) / 2;               // Born rule: P(0) = cos²(θ/2)
+  const got = rng() < p0 ? 0 : 1;
+  move({ x: 0, z: got ? -1 : 1 }, null);
+  S.phase = 'measured';
+  measureCount++;
+  setStatus(`Measured: ${got}. (P(0) was ${Math.round(p0 * 100)}%.) The arrow snapped to |${got}⟩.`, got ? 'warn' : 'info');
+  bites.notify('measure');
+  if (measureCount >= 4) bites.notify('measure3');
+  updateUI();
+}
+
+function prepare() {
+  if (S.phase !== 'measured') return;
+  S.v = { ...S.target };
+  S.phase = 'measure';
+  setStatus('Prepared the same arrow again.', 'info');
+  updateUI();
+}
+
+function levelDone() {
+  chapter.complete(S.idx);
+  const last = chapter.isLast(S.idx);
+  const bonus = S.lv.goal >= 5 ? ` ${S.perfect}/${S.fixed} in one move.` : '';
+  bites.finish(last
+    ? '✓ <b>Chapter complete.</b> Qubits suffer bit flips (X), phase flips (Z) and both (Y) — and we may not look. Next: catching errors blindfolded.'
+    : `✓ <b>Level complete.</b>${bonus}`,
+    last
+      ? [{ label: 'CHAPTER 3 →', onClick: () => (location.href = 'ch3-repetition.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
+      : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(S.idx + 1) }]);
+  setStatus(last ? '✓ Chapter 2 complete!' : '✓ Level complete!', 'success');
+  S.phase = 'done';
+  updateUI();
+}
+
+function move(to, gate) {
+  anim = { from: { ...S.v }, to, t0: performance.now(), gate };
+  S.v = to;
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function setStatus(msg, cls) { $('status').textContent = msg; $('status').className = 'status ' + cls; }
+
+function updateUI() {
+  const lv = S.lv;
+  const meas = lv.goal === 0;
+  $('h-fixed').textContent = meas ? '–' : `${S.fixed}/${lv.goal}`;
+  $('h-moves').textContent = S.moves;
+  $('btn-glitch').style.display = meas ? 'none' : '';
+  const act = canAct();
+  $('btn-glitch').disabled = S.phase !== 'ready' || !act;
+  document.querySelectorAll('[data-gate]').forEach(b => {
+    b.style.display = meas ? 'none' : '';
+    b.disabled = S.phase !== 'broken' || !act;
+  });
+  $('btn-measure').style.display = meas ? '' : 'none';
+  $('btn-prepare').style.display = meas ? '' : 'none';
+  $('btn-measure').disabled = S.phase !== 'measure';
+  $('btn-prepare').disabled = S.phase !== 'measured';
+}
+
+$('btn-glitch').onclick = glitch;
+$('btn-measure').onclick = measure;
+$('btn-prepare').onclick = prepare;
+document.querySelectorAll('[data-gate]').forEach(b => (b.onclick = () => applyGate(b.dataset.gate)));
+document.addEventListener('keydown', e => {
+  const k = e.key.toUpperCase();
+  if (GATES[k]) applyGate(k);
+  if (k === 'G') glitch();
+});
+
+// ── Drawing ────────────────────────────────────────────────────────────────
+const COL = { X: '#00ccff', Z: '#ff8822', Y: '#cc88ff' };
+
+function arrow(v, color, { dashed = false, width = 4, glowAmt = 16 } = {}) {
+  const tx = CX + v.x * R, ty = CY - v.z * R;
+  const len = Math.hypot(tx - CX, ty - CY);
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  if (dashed) ctx.setLineDash([8, 6]);
+  glow(ctx, color, glowAmt);
+  ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(tx, ty); ctx.stroke();
+  ctx.setLineDash([]);
+  if (len > 20) {
+    const a = Math.atan2(ty - CY, tx - CX), h = 18;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx - h * Math.cos(a - 0.4), ty - h * Math.sin(a - 0.4));
+    ctx.lineTo(tx - h * Math.cos(a + 0.4), ty - h * Math.sin(a + 0.4));
+    ctx.closePath();
+    dashed ? ctx.stroke() : ctx.fill();
+  }
+  ctx.restore();
+}
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, W);
+
+  // circle and axes
+  ctx.strokeStyle = 'rgba(0,204,255,0.25)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,204,255,0.08)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(CX - R - 20, CY); ctx.lineTo(CX + R + 20, CY); ctx.moveTo(CX, CY - R - 20); ctx.lineTo(CX, CY + R + 20); ctx.stroke();
+  const lab = { font: 'bold 18px Courier New', color: '#557788' };
+  text(ctx, '|0⟩', CX, CY - R - 30, lab);
+  text(ctx, '|1⟩', CX, CY + R + 30, lab);
+  text(ctx, '|+⟩', CX + R + 32, CY, lab);
+  text(ctx, '|−⟩', CX - R - 32, CY, lab);
+
+  // mirror line while a gate animates
+  let v = S.v;
+  if (anim) {
+    const k = Math.min(1, (t - anim.t0) / 450);
+    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    v = { x: anim.from.x + (anim.to.x - anim.from.x) * e, z: anim.from.z + (anim.to.z - anim.from.z) * e };
+    if (anim.gate) {
+      ctx.save();
+      ctx.strokeStyle = COL[anim.gate]; ctx.globalAlpha = 0.7 * (1 - k); ctx.lineWidth = 3;
+      glow(ctx, COL[anim.gate], 14);
+      ctx.beginPath();
+      if (anim.gate === 'X') { ctx.moveTo(CX - R, CY); ctx.lineTo(CX + R, CY); }
+      else if (anim.gate === 'Z') { ctx.moveTo(CX, CY - R); ctx.lineTo(CX, CY + R); }
+      else ctx.arc(CX, CY, 14, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (k >= 1) anim = null;
+  }
+
+  // glitch flash
+  const f = (t - flash) / 500;
+  if (f >= 0 && f < 1) {
+    ctx.save();
+    ctx.globalAlpha = 0.35 * (1 - f);
+    ctx.fillStyle = '#ff2244';
+    ctx.beginPath(); ctx.arc(CX, CY, R * (0.6 + f * 0.6), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  if (S.target && S.phase !== 'measure' && S.phase !== 'measured') arrow(S.target, '#00ff88', { dashed: true, width: 2, glowAmt: 6 });
+  else if (S.phase === 'measured') arrow(S.target, '#556677', { dashed: true, width: 2, glowAmt: 0 });
+  const broken = S.phase === 'broken' && !S.demo;
+  const col = broken ? '#ff4455' : S.phase === 'fixed' || S.phase === 'done' ? '#00ff88' : '#00eeff';
+  arrow(v, col);
+  noGlow(ctx);
+  ctx.fillStyle = '#c8d4e0';
+  ctx.beginPath(); ctx.arc(CX, CY, 4, 0, Math.PI * 2); ctx.fill();
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+const chapter = QEC.ui.chapter({ id: 'ch2', el: $('levels'), levels: LEVELS.map(l => l.name), start: startLevel });
+chapter.begin();
+QEC.ui.loop(draw);
+</script>
+</body>
+</html>
