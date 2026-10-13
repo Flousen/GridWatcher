@@ -922,8 +922,20 @@ canvas.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('mouseleave', () => { mouseXY = null; });
 
+// After a failed test the wiring stays editable: the first change clears the red markers.
+function editable() {
+  if (S.phase === 'done' && S.collision) {
+    S.phase = 'build';
+    S.collision = null;
+    S.results = [];
+    setPhaseLabel('BUILD');
+    stopLoop();
+  }
+  return S.phase === 'build';
+}
+
 canvas.addEventListener('click', e => {
-  if (S.phase !== 'build') return;
+  if (!editable()) return;
   const p = cPos(e);
 
   const hs = hitSensor(p.x, p.y);
@@ -981,7 +993,7 @@ canvas.addEventListener('click', e => {
 
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
-  if (S.phase !== 'build') return;
+  if (!editable()) return;
   const p = cPos(e);
   const hs = hitSensor(p.x, p.y);
   if (!hs) return;
@@ -1004,7 +1016,7 @@ canvas.addEventListener('touchstart', e => {
 
 // ── Test logic ────────────────────────────────────────────────────────────────
 function runTest() {
-  if (S.phase !== 'build') return;
+  if (S.phase !== 'build' && !(S.phase === 'done' && S.collision)) return;
   if (S.sensors.length === 0) {
     setStatus('Place at least one Sensor first.', 'error'); return;
   }
@@ -1066,11 +1078,11 @@ function finish() {
     if (col.isolated) {
       const lbl = S.nodes[col.n1].label;
       rows.forEach(r => { if (r.dataset.lbl === lbl) r.classList.add('collide'); });
-      setStatus(`✗ Node ${lbl} triggers NO sensors — glitch undetectable!`, 'error');
+      setStatus(`✗ Node ${lbl} triggers NO sensors — glitch undetectable! Rewire and TEST again.`, 'error');
     } else {
       const l1 = S.nodes[col.n1].label, l2 = S.nodes[col.n2].label;
       rows.forEach(r => { if (r.dataset.lbl === l1 || r.dataset.lbl === l2) r.classList.add('collide'); });
-      setStatus(`✗ COLLISION DETECTED — Nodes ${l1} & ${l2} share the same alarm pattern!`, 'error');
+      setStatus(`✗ COLLISION — Nodes ${l1} & ${l2} share the same alarm pattern. Rewire and TEST again.`, 'error');
     }
     startLoop();
   } else {

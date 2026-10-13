@@ -28,6 +28,8 @@ canvas { cursor: pointer; }
     <div class="controls">
       <button class="btn" id="btn-glitch">⚡ GLITCH</button>
       <button class="btn go" id="btn-check">✓ CHECK</button>
+      <button class="btn" id="btn-retry">↺ TRY AGAIN</button>
+      <button class="btn" id="btn-reveal">SHOW ANSWER</button>
       <button class="btn next" id="btn-round">NEXT ROUND →</button>
     </div>
     <div class="legend">
@@ -115,10 +117,11 @@ function startLevel(i) {
 
 function newRound() {
   const n = S.lv.n;
-  S.phase = 'ready';          // ready → hidden (glitched) → revealed
+  S.phase = 'ready';          // ready → hidden (glitched) → [failed ↔ hidden] → revealed
   S.err = P.identity(n);
   S.corr = P.identity(n);
   S.result = null;
+  S.retried = false;
   setStatus('All quiet. Press ⚡ GLITCH to start the round.', 'info');
   updateUI();
 }
@@ -149,22 +152,46 @@ function flip(q) {
 function check() {
   if (S.phase !== 'hidden' || !bites.open) return;
   if (!D.isZero(syndrome())) { setStatus('Some checkers are still lit — keep going.', 'warn'); return; }
-  S.phase = 'revealed';
   S.result = D.residualStatus(S.code, S.err, S.corr);
-  S.played++;
-  const isZ = S.err.z.some(Boolean);
   // advance the briefing first, so feedback below lands under the new bite
   bites.notify('checked');
-  if (S.result === 'ok') bites.notify('solved');
   if (S.result === 'ok') {
+    bites.notify('solved');
     S.solved++;
     setStatus('✓ Fixed! The stored qubit is safe.', 'success');
-  } else if (isZ) {
-    setStatus('✗ A phase flip went unnoticed — the stored qubit is damaged.', 'error');
-  } else {
-    setStatus('✗ Logical error! Glitch + your fix flipped ALL qubits: |000⟩ ↔ |111⟩.', 'error');
-    if (S.lv.countAll) bites.feedback('Two glitches looked exactly like one glitch on the <em>other</em> qubit. Your fix completed the flip: a <b>logical error</b>. Three qubits can only fix <b>one</b> glitch — that is the code\'s <b>distance</b> limit.');
+    if (S.retried) bites.feedback(S.lv.countAll
+      ? 'Right on the second try! But a real decoder gets only <b>one</b> guess — and with two glitches in three qubits, the checkers always point it the wrong way.'
+      : 'Second try worked. A real decoder gets only <b>one</b> guess, so it always goes for the fewest flips.');
+    return endRound();
   }
+  if (S.err.z.some(Boolean)) {
+    // a phase flip: no X fix could ever help, so there is nothing to retry
+    setStatus('✗ A phase flip went unnoticed — the stored qubit is damaged.', 'error');
+    return endRound();
+  }
+  // Wrong fix: keep the glitch hidden and let the player try again.
+  S.phase = 'failed';
+  setStatus('✗ Logical error! The checkers are dark, but glitch + your fix flipped ALL qubits (|000⟩ ↔ |111⟩).', 'error');
+  bites.feedback(S.lv.countAll
+    ? 'Two glitches look exactly like one glitch on the <em>other</em> qubit, so the obvious fix completes the flip: a <b>logical error</b>. Three qubits can only fix <b>one</b> glitch — the code\'s <b>distance</b> limit. Try again, or show the answer.'
+    : 'Dark checkers, but the wrong fix. Remember: the <b>fewest</b> flips that turn every checker dark. Try again!');
+  updateUI();
+}
+
+function retry() {
+  if (S.phase !== 'failed') return;
+  S.corr = P.identity(S.lv.n);
+  S.result = null;
+  S.retried = true;
+  S.phase = 'hidden';
+  setStatus('Same glitch, fresh start. Read the checkers again.', 'info');
+  updateUI();
+}
+
+// The round is over: show where the glitches really were. Counts towards the level.
+function endRound() {
+  S.phase = 'revealed';
+  S.played++;
   updateUI();
   const count = S.lv.countAll ? S.played : S.solved;
   // wrap up once the goal is met — but never cut off a bite the player is still reading
@@ -201,12 +228,15 @@ function updateUI() {
   $('btn-glitch').disabled = S.phase !== 'ready' || !bites.open;
   $('btn-check').disabled = S.phase !== 'hidden' || !bites.open;
   $('btn-round').style.display = S.phase === 'revealed' ? '' : 'none';
+  $('btn-retry').style.display = $('btn-reveal').style.display = S.phase === 'failed' ? '' : 'none';
 }
 bites.onChange = updateUI;
 
 $('btn-glitch').onclick = glitch;
 $('btn-check').onclick = check;
 $('btn-round').onclick = () => { if (S.phase === 'revealed') newRound(); };
+$('btn-retry').onclick = retry;
+$('btn-reveal').onclick = () => { if (S.phase === 'failed') endRound(); };
 
 const qx = c => { const n = S.lv.n; return n === 1 ? W / 2 : 90 + c * (W - 180) / (n - 1); };
 function hitQubit(p) {
@@ -282,7 +312,7 @@ function draw(t) {
   }
 
   // verdict
-  if (revealed && S.result) {
+  if ((revealed || S.phase === 'failed') && S.result) {
     const ok = S.result === 'ok';
     glow(ctx, ok ? '#00ff88' : '#ff4455', 20);
     text(ctx, ok ? '✓ FIXED' : '✗ LOGICAL ERROR', W / 2, 36, { font: 'bold 24px Courier New', color: ok ? '#00ff88' : '#ff4455' });
