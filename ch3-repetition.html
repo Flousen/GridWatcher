@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ask, Don't Look</title>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+#btn-glitch { color: var(--amber); border-color: #885500; }
+canvas { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="index.html">← MAP</a>
+  <div><div class="eyebrow">CHAPTER 3</div><h1>ASK, DON'T LOOK</h1></div>
+  <div class="levels" id="levels"></div>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <div class="hud">
+      <div class="chip"><span id="h-solved-lbl">SOLVED</span> <b id="h-solved">0/0</b></div>
+      <div class="chip">SYNDROME <b id="h-syn">–</b></div>
+    </div>
+    <canvas id="cv" width="760" height="260"></canvas>
+    <div class="controls">
+      <button class="btn" id="btn-glitch">⚡ GLITCH</button>
+      <button class="btn go" id="btn-check">✓ CHECK</button>
+      <button class="btn next" id="btn-round">NEXT ROUND →</button>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:#ff8822;transform:rotate(45deg) scale(.8)"></span> checker lit: neighbours differ</span>
+      <span><b style="color:var(--x-col)">X</b> your correction</span>
+      <span><b style="color:var(--red)">⚡</b> hidden glitch (shown after CHECK)</span>
+    </div>
+    <div class="status info" id="status"></div>
+  </section>
+  <aside class="bites" id="bites"></aside>
+</main>
+
+<script src="js/core/rng.js"></script>
+<script src="js/core/pauli.js"></script>
+<script src="js/core/codes.js"></script>
+<script src="js/core/decoder.js"></script>
+<script src="js/ui/progress.js"></script>
+<script src="js/ui/canvas.js"></script>
+<script src="js/ui/bites.js"></script>
+<script>
+'use strict';
+const P = QEC.Pauli, D = QEC.decoder;
+const { glow, noGlow, text, pointer } = QEC.ui;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = cv.width;
+const H = cv.height, QY = 140, QR = 28;
+const rng = QEC.makeRng(QEC.randomSeed());
+const bites = new QEC.ui.Bites($('bites'));
+
+// ── Levels ─────────────────────────────────────────────────────────────────
+// errors(rng, n) returns the hidden error for one round.
+const xOn = (n, qs) => P.on(n, qs, 'X');
+const LEVELS = [
+  {
+    name: '3 QUBITS', n: 3, goal: 3,
+    errors: (n) => xOn(n, [rng.int(n)]),
+    bites: [
+      'No peeking allowed. So we spread one qubit over <b>three</b>: |0⟩ becomes |000⟩, |1⟩ becomes |111⟩ — and superpositions become mixes of both.',
+      'The orange diamonds are <b>checkers</b>. Each asks two neighbours just one thing: <em>are you equal?</em> Lit = different. The checkers never learn whether the qubits are 0 or 1 — so nothing collapses.',
+      { t: 'A hidden <span class="x">X</span> glitch is about to hit one qubit. You won\'t see which.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Look at the lit checkers. Which qubit is the odd one out? Click it to apply <span class="x">X</span>.', wait: 'flip', hint: 'click a qubit' },
+      { t: 'Clicking again undoes your X. When every checker is dark, press CHECK to reveal the truth.', wait: 'solved', hint: 'turn all checkers dark, then CHECK' },
+      'Each glitch lit a <em>different</em> pattern of checkers — the syndrome from Chapter 1, now for qubits. Solve 3 rounds.',
+    ],
+  },
+  {
+    name: '5 QUBITS', n: 5, goal: 4,
+    errors: (n) => xOn(n, rng.sample(n, 1 + rng.int(2))),
+    bites: [
+      'Five qubits, four checkers — and now <b>one or two</b> glitches per round.',
+      'Rule of thumb: pick the <b>fewest</b> flips that turn every checker dark. Few glitches are more likely than many. Solve 4 rounds.',
+    ],
+  },
+  {
+    name: 'TOO MANY', n: 3, goal: 2, countAll: true,
+    errors: (n) => xOn(n, rng.sample(n, 2)),
+    bites: [
+      'Back to three qubits. But this time <b>two</b> glitches hit at once.',
+      'Do what the checkers suggest, then CHECK. Play 2 rounds.',
+    ],
+  },
+  {
+    name: 'PHASE SNEAK', n: 3, goal: 1, countAll: true,
+    errors: (n) => P.on(n, [rng.int(n)], 'Z'),
+    bites: [
+      { t: 'One last glitch. Go ahead.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Hm. Every checker stays dark. Nothing to fix? Press CHECK.', wait: 'checked', hint: 'press CHECK' },
+      'It was a <span class="z">Z</span> glitch! These checkers compare <em>bit values</em> only, so a <b>phase flip</b> slips right through. To catch both kinds we need two kinds of checkers — on a 2D grid. That\'s the <b>surface code</b>.',
+    ],
+  },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let S = null, hover = -1;
+const ripples = [];
+
+function startLevel(i) {
+  const lv = LEVELS[i];
+  S = { lv, idx: i, code: QEC.codes.repetitionCode(lv.n), solved: 0, played: 0 };
+  W = cv.width = 180 + (lv.n - 1) * (lv.n <= 3 ? 170 : 140);   // fewer qubits → narrower board, bigger on phones
+  newRound();
+  bites.play(lv.bites, () => { if (S.goalReached) levelDone(); else updateUI(); });
+}
+
+function newRound() {
+  const n = S.lv.n;
+  S.phase = 'ready';          // ready → hidden (glitched) → revealed
+  S.err = P.identity(n);
+  S.corr = P.identity(n);
+  S.result = null;
+  setStatus('All quiet. Press ⚡ GLITCH to start the round.', 'info');
+  updateUI();
+}
+
+const residual = () => P.compose(S.err, S.corr);
+const syndrome = () => D.syndrome(S.code, residual());
+
+function glitch() {
+  if (S.phase !== 'ready' || !bites.open) return;
+  S.err = S.lv.errors(S.lv.n);
+  S.phase = 'hidden';
+  setStatus('⚡ Something glitched. Read the checkers.', 'error');
+  bites.notify('glitch');
+  updateUI();
+}
+
+function flip(q) {
+  if (S.phase !== 'hidden' || !bites.open) return;
+  P.applyAt(S.corr, q, 'X');
+  const d = S.code.data[q];
+  ripples.push({ x: qx(d.c), y: QY, t0: performance.now() });
+  bites.notify('flip');
+  const lit = syndrome().filter(Boolean).length;
+  setStatus(lit ? `${lit} checker${lit > 1 ? 's' : ''} still lit.` : 'All checkers dark. Press ✓ CHECK.', lit ? 'info' : 'success');
+  updateUI();
+}
+
+function check() {
+  if (S.phase !== 'hidden' || !bites.open) return;
+  if (!D.isZero(syndrome())) { setStatus('Some checkers are still lit — keep going.', 'warn'); return; }
+  S.phase = 'revealed';
+  S.result = D.residualStatus(S.code, S.err, S.corr);
+  S.played++;
+  const isZ = S.err.z.some(Boolean);
+  // advance the briefing first, so feedback below lands under the new bite
+  bites.notify('checked');
+  if (S.result === 'ok') bites.notify('solved');
+  if (S.result === 'ok') {
+    S.solved++;
+    setStatus('✓ Fixed! The stored qubit is safe.', 'success');
+  } else if (isZ) {
+    setStatus('✗ A phase flip went unnoticed — the stored qubit is damaged.', 'error');
+  } else {
+    setStatus('✗ Logical error! Glitch + your fix flipped ALL qubits: |000⟩ ↔ |111⟩.', 'error');
+    if (S.lv.countAll) bites.feedback('Two glitches looked exactly like one glitch on the <em>other</em> qubit. Your fix completed the flip: a <b>logical error</b>. Three qubits can only fix <b>one</b> glitch — that is the code\'s <b>distance</b> limit.');
+  }
+  updateUI();
+  const count = S.lv.countAll ? S.played : S.solved;
+  // wrap up once the goal is met — but never cut off a bite the player is still reading
+  if (count >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 900); }
+}
+
+function levelDone() {
+  chapter.complete(S.idx);
+  const last = chapter.isLast(S.idx);
+  const msg = {
+    0: '✓ <b>Level complete.</b> You located errors using only "are you equal?" questions.',
+    1: '✓ <b>Level complete.</b> More qubits, more checkers — and more glitches you can handle.',
+    2: '✓ <b>Lesson learned:</b> a code with distance <b>d</b> can fix up to <b>(d−1)/2</b> glitches. Three qubits: distance 3, one glitch.',
+  }[S.idx];
+  bites.finish(last
+    ? '✓ <b>Chapter complete.</b> Parity checks find bit flips without looking. Next: a grid that catches phase flips too.'
+    : msg,
+    last
+      ? [{ label: 'CHAPTER 4 →', onClick: () => (location.href = 'ch4-surface.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
+      : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(S.idx + 1) }]);
+  S.phase = 'done';
+  updateUI();
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function setStatus(msg, cls) { $('status').textContent = msg; $('status').className = 'status ' + cls; }
+
+function updateUI() {
+  if (!S) return;
+  const lv = S.lv;
+  $('h-solved-lbl').textContent = lv.countAll ? 'ROUNDS' : 'SOLVED';
+  $('h-solved').textContent = lv.countAll ? `${S.played}/${lv.goal}` : `${S.solved}/${lv.goal}`;
+  $('h-syn').textContent = S.phase === 'ready' ? '–' : syndrome().join('');
+  $('btn-glitch').disabled = S.phase !== 'ready' || !bites.open;
+  $('btn-check').disabled = S.phase !== 'hidden' || !bites.open;
+  $('btn-round').style.display = S.phase === 'revealed' ? '' : 'none';
+}
+bites.onChange = updateUI;
+
+$('btn-glitch').onclick = glitch;
+$('btn-check').onclick = check;
+$('btn-round').onclick = () => { if (S.phase === 'revealed') newRound(); };
+
+const qx = c => { const n = S.lv.n; return n === 1 ? W / 2 : 90 + c * (W - 180) / (n - 1); };
+function hitQubit(p) {
+  for (let q = 0; q < S.lv.n; q++) if ((p.x - qx(q)) ** 2 + (p.y - QY) ** 2 <= (QR + 10) ** 2) return q;
+  return -1;
+}
+cv.addEventListener('click', e => { const q = hitQubit(pointer(cv, e)); if (q >= 0) flip(q); });
+cv.addEventListener('mousemove', e => { hover = hitQubit(pointer(cv, e)); });
+cv.addEventListener('mouseleave', () => { hover = -1; });
+
+// ── Drawing ────────────────────────────────────────────────────────────────
+function diamond(x, y, s) {
+  ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s, y); ctx.closePath();
+}
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, H);
+  if (!S) return;
+  const n = S.lv.n, syn = S.phase === 'ready' ? S.code.stabs.map(() => 0) : syndrome();
+  const revealed = S.phase === 'revealed' || S.phase === 'done';
+  const pulse = 0.6 + 0.4 * Math.sin(t * 0.006);
+
+  // wire
+  ctx.strokeStyle = 'rgba(0,204,255,0.15)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(qx(0), QY); ctx.lineTo(qx(n - 1), QY); ctx.stroke();
+
+  // checkers
+  S.code.stabs.forEach((s, k) => {
+    const x = (qx(s.qubits[0]) + qx(s.qubits[1])) / 2;
+    const lit = syn[k];
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = lit ? '#ffaa44' : '#6a3a12';
+    ctx.fillStyle = lit ? `rgba(255,136,34,${0.35 + 0.25 * pulse})` : 'rgba(255,136,34,0.05)';
+    if (lit) glow(ctx, '#ff8822', 22 * pulse);
+    diamond(x, QY, 22); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    text(ctx, lit ? '≠' : '=', x, QY + 1, { font: 'bold 18px Courier New', color: lit ? '#fff' : '#6a3a12' });
+    // little "question" arcs to the two neighbours
+    ctx.strokeStyle = lit ? 'rgba(255,136,34,0.6)' : 'rgba(255,136,34,0.12)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    for (const q of s.qubits) {
+      ctx.beginPath(); ctx.moveTo(x, QY - 22); ctx.quadraticCurveTo((x + qx(q)) / 2, QY - 70, qx(q), QY - QR - 4); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  });
+
+  // qubits
+  for (let q = 0; q < n; q++) {
+    const x = qx(q);
+    const fixed = S.corr.x[q];
+    const errHere = revealed && (S.err.x[q] || S.err.z[q]);
+    ctx.save();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = errHere ? '#ff4455' : hover === q && S.phase === 'hidden' ? '#ffffff' : '#00aacc';
+    ctx.fillStyle = 'rgba(0,170,204,0.08)';
+    glow(ctx, ctx.strokeStyle, hover === q ? 18 : 10);
+    ctx.beginPath(); ctx.arc(x, QY, QR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    if (fixed) text(ctx, 'X', x, QY + 1, { font: 'bold 22px Courier New', color: '#00ccff' });
+    else text(ctx, '?', x, QY + 1, { font: 'bold 18px Courier New', color: '#335566' });
+    text(ctx, `q${q + 1}`, x, QY + QR + 18, { font: '12px Courier New', color: '#557788' });
+    if (errHere) text(ctx, '⚡' + P.get(S.err, q), x, QY + QR + 40, { font: 'bold 16px Courier New', color: '#ff4455' });
+  }
+
+  // click ripples
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i], k = (t - r.t0) / 500;
+    if (k >= 1 || k < 0) { if (k >= 1) ripples.splice(i, 1); continue; }
+    ctx.strokeStyle = `rgba(0,204,255,${1 - k})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(r.x, r.y, QR + k * 30, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // verdict
+  if (revealed && S.result) {
+    const ok = S.result === 'ok';
+    glow(ctx, ok ? '#00ff88' : '#ff4455', 20);
+    text(ctx, ok ? '✓ FIXED' : '✗ LOGICAL ERROR', W / 2, 36, { font: 'bold 24px Courier New', color: ok ? '#00ff88' : '#ff4455' });
+    noGlow(ctx);
+  }
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+const chapter = QEC.ui.chapter({ id: 'ch3', el: $('levels'), levels: LEVELS.map(l => l.name), start: startLevel });
+chapter.begin();
+QEC.ui.loop(draw);
+</script>
+</body>
+</html>
