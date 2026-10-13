@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grid Watcher Tests</title>
+<style>
+body { background: #050510; color: #ccd; font-family: 'Courier New', monospace; padding: 20px 16px; }
+h1 { color: #00ffff; font-size: 1.3em; letter-spacing: 3px; margin-bottom: 6px; }
+#summary { margin: 10px 0 16px; font-weight: bold; font-size: 1.1em; }
+#summary.pass { color: #00ff88; }
+#summary.fail { color: #ff4444; }
+.row { font-size: 0.85em; padding: 3px 0; }
+.row.pass .tag { color: #00ff88; }
+.row.fail .tag { color: #ff4444; }
+.suite { color: #556677; }
+.err { color: #ff8888; margin-left: 52px; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<h1>GRID WATCHER // TESTS</h1>
+<div id="summary">running…</div>
+<div id="out"></div>
+
+<script src="tests/runner.js"></script>
+<script src="tests/manifest.js"></script>
+<script>
+// Load scripts one after another (plain <script> tags, so this also works from file://).
+const files = [...TEST_MANIFEST.sources, ...TEST_MANIFEST.tests];
+(function next(i) {
+  if (i === files.length) return report();
+  const s = document.createElement('script');
+  s.src = files[i];
+  s.onload = () => next(i + 1);
+  s.onerror = () => { document.getElementById('summary').textContent = 'Could not load ' + files[i]; };
+  document.body.appendChild(s);
+})(0);
+
+function report() {
+  const results = TestRunner.run();
+  const failed = results.filter(r => !r.pass).length;
+  const out = document.getElementById('out');
+  for (const r of results) {
+    const row = document.createElement('div');
+    row.className = 'row ' + (r.pass ? 'pass' : 'fail');
+    row.innerHTML = `<span class="tag">${r.pass ? '  ok ' : 'FAIL '}</span> <span class="suite">${r.suite} ›</span> `;
+    row.appendChild(document.createTextNode(r.name));
+    if (!r.pass) {
+      const e = document.createElement('div');
+      e.className = 'err';
+      e.textContent = r.error;
+      row.appendChild(e);
+    }
+    out.appendChild(row);
+  }
+  const sum = document.getElementById('summary');
+  sum.textContent = `${results.length - failed}/${results.length} passed`;
+  sum.className = failed ? 'fail' : 'pass';
+  document.title = (failed ? 'FAIL ' : 'PASS ') + `${results.length - failed}/${results.length}`;
+}
+</script>
+</body>
+</html>
