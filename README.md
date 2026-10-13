@@ -45,7 +45,6 @@ css/theme.css              shared neon theme
 js/core/                   pure logic, tested: rng, pauli, codes, decoder, sim, hamming
 js/ui/                     bites (step-by-step explanations), progress, canvas + surface drawing
 tests.html, tests/         test runner (browser + gjs) and test files
-ideen/                     earlier prototypes (Quantum Defender, surface code demo)
 ```
 
 ## The physics, honestly
