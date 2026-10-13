@@ -1,0 +1,194 @@
+/* Shared neon theme for all chapters. Colours follow the original Grid Watcher puzzle;
+   X/Z colours follow Litinski's "Game of Surface Codes" (X = cyan dashed, Z = orange solid). */
+:root {
+  --bg:       #050510;
+  --panel:    rgba(0, 204, 255, 0.03);
+  --line:     rgba(0, 204, 255, 0.14);
+  --text:     #c8d4e0;
+  --dim:      #556677;
+  --faint:    #334455;
+  --cyan:     #00eeff;
+  --cyan-dk:  #0099bb;
+  --purple:   #cc44ff;
+  --green:    #00ff88;
+  --red:      #ff4455;
+  --amber:    #ffaa00;
+  --yellow:   #ffee00;
+  --x-col:    #00ccff;   /* X: bit flips, X-checks */
+  --z-col:    #ff8822;   /* Z: phase flips, Z-checks */
+  --y-col:    #cc88ff;   /* Y: both */
+  --mono:     'Courier New', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+  padding: 14px 16px 32px;
+}
+
+a { color: var(--cyan); }
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-width: 1100px;
+  margin: 0 auto 14px;
+}
+.back {
+  color: var(--dim);
+  text-decoration: none;
+  border: 1px solid var(--faint);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.78em;
+  letter-spacing: 2px;
+}
+.back:hover { color: var(--cyan); border-color: var(--cyan-dk); }
+.eyebrow { color: var(--purple); font-size: 0.68em; letter-spacing: 3px; }
+h1 {
+  color: #00ffff;
+  font-size: 1.5em;
+  letter-spacing: 4px;
+  text-shadow: 0 0 24px #00ffff88, 0 0 4px #00ffff;
+}
+.levels { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.lvl-chip {
+  font-family: var(--mono);
+  font-size: 0.72em;
+  letter-spacing: 1px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--faint);
+  background: transparent;
+  color: var(--faint);
+  cursor: default;
+}
+.lvl-chip.open    { color: var(--dim); border-color: var(--dim); cursor: pointer; }
+.lvl-chip.done    { color: var(--green); border-color: #00aa66; cursor: pointer; }
+.lvl-chip.current { color: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 10px #00eeff44; }
+
+/* ── Stage: board + bites side by side, stacked on narrow screens ── */
+.stage {
+  display: flex;
+  gap: 18px;
+  max-width: 1100px;
+  margin: 0 auto;
+  align-items: flex-start;
+}
+.board { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.bites { flex: 0 0 320px; }
+@media (max-width: 860px) {
+  .stage { flex-direction: column; }
+  .bites { flex: none; width: 100%; order: -1; }   /* read first, then play right below */
+  /* small screens: only the current bite and the one right before it */
+  .bite:not(.current):not(:has(+ .bite.current)) { display: none; }
+}
+
+canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  touch-action: manipulation;
+}
+
+.hud { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 10px; }
+.chip {
+  border: 1px solid rgba(0, 255, 255, 0.18);
+  background: rgba(0, 255, 255, 0.04);
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 0.76em;
+  color: #4488aa;
+  letter-spacing: 1px;
+}
+.chip b { color: var(--cyan); }
+
+.controls { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+button.btn {
+  padding: 9px 18px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 0.82em;
+  font-weight: bold;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.04);
+  color: #8899aa;
+  border: 1px solid #334455;
+}
+button.btn:hover:not(:disabled) { color: #ccddee; background: rgba(255, 255, 255, 0.08); }
+button.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+button.btn.go     { background: #006633; color: var(--green); border-color: #009944; }
+button.btn.go:hover:not(:disabled) { background: #008844; box-shadow: 0 0 18px #00ff8866; }
+button.btn.next   { background: #330066; color: #cc88ff; border-color: #6600cc; }
+button.btn.next:hover:not(:disabled) { background: #440088; box-shadow: 0 0 18px #9900ff66; }
+button.btn.tool-X { color: var(--x-col); border-color: #006688; }
+button.btn.tool-Z { color: var(--z-col); border-color: #884400; }
+button.btn.tool-Y { color: var(--y-col); border-color: #553377; }
+button.btn.active { box-shadow: 0 0 14px currentColor; background: rgba(255, 255, 255, 0.1); }
+
+/* ── Status line ─────────────────────────────────────────── */
+.status {
+  margin-top: 10px;
+  min-height: 22px;
+  font-size: 0.85em;
+  text-align: center;
+  letter-spacing: 1px;
+  max-width: 700px;
+}
+.status.info    { color: #00bbdd; }
+.status.success { color: var(--green); text-shadow: 0 0 10px #00ff8888; }
+.status.error   { color: var(--red); text-shadow: 0 0 10px #ff000088; }
+.status.warn    { color: var(--amber); }
+
+/* ── Bites: bite-sized explanations ──────────────────────── */
+.bites {
+  background: var(--panel);
+  border: 1px solid rgba(0, 204, 255, 0.12);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.bites-title { color: var(--cyan-dk); font-size: 0.7em; letter-spacing: 3px; margin-bottom: 10px; }
+.bite {
+  font-size: 0.86em;
+  line-height: 1.6;
+  color: #7a8a9a;
+  padding: 8px 10px;
+  border-left: 2px solid transparent;
+  margin-bottom: 4px;
+}
+.bite.current {
+  color: #dde6ee;
+  border-left-color: var(--cyan);
+  background: rgba(0, 238, 255, 0.05);
+  animation: biteIn 0.3s ease;
+}
+.bite.feedback { border-left-color: var(--amber); }
+.bite b { color: var(--cyan); }
+.bite .x { color: var(--x-col); font-weight: bold; }
+.bite .z { color: var(--z-col); font-weight: bold; }
+.bite .y { color: var(--y-col); font-weight: bold; }
+.bite-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.bite-wait { color: var(--amber); font-size: 0.78em; letter-spacing: 1px; }
+@keyframes biteIn {
+  from { opacity: 0.4; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 10px; font-size: 0.72em; color: var(--dim); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
