@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Threshold Lab</title>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+:root {
+  /* chart series: dataviz reference palette, dark slots 1–3, fixed order d = 3, 5, 7 */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --chart-ink: #c8d4e0;
+  --chart-muted: #7a8a9a;
+  --chart-grid: rgba(200, 212, 224, 0.08);
+}
+.lab { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; width: 100%; }
+.panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.panel-title { font-size: 0.7em; letter-spacing: 3px; color: var(--cyan-dk); align-self: flex-start; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.row label { font-size: 0.78em; color: var(--dim); letter-spacing: 1px; }
+input[type=range] { accent-color: #00ccff; width: 150px; }
+.val { color: var(--cyan); font-weight: bold; min-width: 44px; display: inline-block; }
+.dbtn.active { color: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 10px #00eeff44; }
+
+#chart-wrap { position: relative; width: min(440px, 100%); }
+#chart { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 10px; }
+#chart text { font-family: 'Courier New', monospace; }
+.legend-row { display: flex; gap: 6px 14px; flex-wrap: wrap; max-width: 440px; font-size: 0.72em; color: var(--chart-ink); }
+.legend-row i { display: inline-block; width: 18px; height: 2px; vertical-align: middle; margin-right: 6px; }
+#tip {
+  position: absolute; pointer-events: none; display: none;
+  background: #0b1222; border: 1px solid #334455; border-radius: 6px;
+  padding: 6px 9px; font-size: 0.72em; color: var(--chart-ink); white-space: nowrap; line-height: 1.5;
+}
+#tip .sw2 { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+details.table { width: min(440px, 100%); font-size: 0.75em; color: var(--chart-muted); }
+details.table summary { cursor: pointer; letter-spacing: 2px; }
+details.table table { border-collapse: collapse; margin-top: 6px; width: 100%; }
+details.table td, details.table th { padding: 3px 8px; text-align: right; border-bottom: 1px solid #1a2a3a; color: var(--chart-ink); }
+#guess-row { display: none; }
+.bites { flex-basis: 270px; }
+@media (max-width: 860px) { .bites { flex-basis: auto; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="index.html">← MAP</a>
+  <div><div class="eyebrow">CHAPTER 5</div><h1>THRESHOLD LAB</h1></div>
+  <div class="levels" id="levels"></div>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <div class="lab">
+      <div class="panel">
+        <div class="panel-title">// ONE SHOT //</div>
+        <canvas id="cv" width="300" height="300"></canvas>
+        <div class="row">
+          <button class="btn dbtn" data-d="3">d=3</button>
+          <button class="btn dbtn" data-d="5">d=5</button>
+          <button class="btn dbtn" data-d="7">d=7</button>
+        </div>
+        <div class="row">
+          <label for="p">p</label>
+          <input type="range" id="p" min="1" max="25" value="5">
+          <span class="val" id="p-val">5%</span>
+        </div>
+        <div class="row">
+          <button class="btn" id="btn-roll">🎲 ROLL</button>
+          <div class="chip">SHOTS <b id="h-shots">0</b></div>
+          <div class="chip">FOOLED <b id="h-fails">0</b></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">// THOUSANDS OF SHOTS //</div>
+        <div class="legend-row" id="legend"></div>
+        <div id="chart-wrap">
+          <svg id="chart" viewBox="0 0 440 330" role="img" aria-label="Logical error rate versus physical error rate for distances 3, 5 and 7"></svg>
+          <div id="tip"></div>
+        </div>
+        <div class="row">
+          <button class="btn go" id="btn-sweep">▶ RUN SWEEP</button>
+          <span class="chip">PROGRESS <b id="h-prog">–</b></span>
+        </div>
+        <div class="row" id="guess-row">
+          <label for="guess">YOUR THRESHOLD</label>
+          <input type="range" id="guess" min="10" max="200" value="40">
+          <span class="val" id="guess-val">4.0%</span>
+          <button class="btn next" id="btn-lock">LOCK IN</button>
+        </div>
+        <details class="table"><summary>SHOW DATA TABLE</summary><table id="table"></table></details>
+      </div>
+    </div>
+    <div class="status info" id="status"></div>
+  </section>
+  <aside class="bites" id="bites"></aside>
+</main>
+
+<script src="js/core/rng.js"></script>
+<script src="js/core/pauli.js"></script>
+<script src="js/core/codes.js"></script>
+<script src="js/core/decoder.js"></script>
+<script src="js/core/sim.js"></script>
+<script src="js/ui/progress.js"></script>
+<script src="js/ui/canvas.js"></script>
+<script src="js/ui/bites.js"></script>
+<script src="js/ui/surface.js"></script>
+<script>
+'use strict';
+const P = QEC.Pauli, D = QEC.decoder;
+const { glow, noGlow } = QEC.ui;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), W = cv.width;
+const rng = QEC.makeRng(QEC.randomSeed());
+const bites = new QEC.ui.Bites($('bites'));
+
+const DISTANCES = [3, 5, 7];
+const SERIES = { 3: 'var(--series-1)', 5: 'var(--series-2)', 7: 'var(--series-3)' };
+const CODES = Object.fromEntries(DISTANCES.map(d => [d, QEC.codes.rotatedSurfaceCode(d)]));
+const P_GRID = Array.from({ length: 20 }, (_, i) => (i + 1) / 100);   // 1% … 20%
+const SHOTS = 1500;
+
+// ── Levels ─────────────────────────────────────────────────────────────────
+const LEVELS = [
+  {
+    name: 'ONE SHOT',
+    bites: [
+      'Real chips glitch at random. Our model: every qubit independently gets an <span class="x">X</span> flip with probability <b>p</b>.',
+      { t: 'Roll a shot. Glitches (red) light the checks, and a <b>decoder</b> — a program doing what you did in Chapter 4 — applies its fix (cyan rings).', wait: 'shot', hint: 'press 🎲 ROLL' },
+      { t: 'At small p the decoder almost always wins. Turn p up and roll until it gets <b>fooled</b>.', wait: 'fail', hint: 'raise p, roll until FOOLED' },
+      'Too many glitches: the decoder\'s best guess completes an edge-to-edge chain (yellow) — a logical error. Nobody could have done better with that syndrome.',
+    ],
+  },
+  {
+    name: 'SWEEP',
+    bites: [
+      'One shot is luck. To compare codes we roll <b>thousands</b> per setting and count how often the decoder is fooled: the <b>logical error rate</b>.',
+      { t: 'Run the sweep: patches of distance 3, 5 and 7, glitch rates from 1% to 20%.', wait: 'sweep', hint: 'press ▶ RUN SWEEP' },
+      'The dashed diagonal is a single unprotected qubit. Below it, encoding helps.',
+      'Now compare the curves. At <b>low p</b>, bigger patches are <em>much</em> better. At <b>high p</b>, bigger patches are <em>worse</em>!',
+    ],
+  },
+  {
+    name: 'THRESHOLD',
+    bites: [
+      'The curves cross at the <b>threshold</b>. Below it, every extra ring of qubits suppresses errors further. Above it, more qubits just means more things to go wrong.',
+      { t: 'Slide the yellow marker to where the curves cross, then LOCK IN.', wait: 'guess', hint: 'set the marker, press LOCK IN', onShow: () => { $('guess-row').style.display = 'flex'; drawChart(); } },
+      'In this simplified model (perfect checks) the threshold is about <b>10%</b>. With realistic, noisy checks it drops to about <b>1%</b> — and the best chips today sit just below it. That is why this one number matters so much.',
+    ],
+  },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let lvIdx = 0, dist = 3, shots = 0, fails = 0, last = null, sweeping = false;
+const data = {};   // data[d][i] = logical error rate at P_GRID[i]
+
+function startLevel(i) {
+  lvIdx = i;
+  $('guess-row').style.display = 'none';
+  if (i === 2 && !haveData()) sweep();
+  bites.play(LEVELS[i].bites, () => levelDone(i));
+  updateUI();
+}
+
+function levelDone(i) {
+  chapter.complete(i);
+  const lastLv = chapter.isLast(i);
+  bites.finish(lastLv
+    ? '✓ <b>Chapter complete!</b> You know why quantum computers need many physical qubits per logical one — and why pushing hardware below threshold is the race everybody is running. Coming next: Litinski\'s <em>Game of Surface Codes</em>, where whole patches become tiles.'
+    : '✓ <b>Level complete.</b>',
+    lastLv
+      ? [{ label: 'BACK TO MAP', onClick: () => (location.href = 'index.html') }]
+      : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(i + 1) }]);
+}
+
+const pNow = () => Number($('p').value) / 100;
+
+function roll() {
+  last = QEC.sim.shot(CODES[dist], pNow(), rng);
+  last.d = dist;
+  shots++;
+  const fooled = last.status !== 'ok';
+  if (fooled) fails++;
+  const k = last.err.x.filter(Boolean).length;
+  setStatus(fooled
+    ? `✗ ${k} glitch${k === 1 ? '' : 'es'} — the decoder was fooled.`
+    : k ? `✓ ${k} glitch${k === 1 ? '' : 'es'} — decoder fixed it.` : 'No glitch this time.', fooled ? 'error' : 'success');
+  bites.notify('shot');
+  if (fooled) bites.notify('fail');
+  updateUI();
+}
+
+function haveData() { return DISTANCES.every(d => data[d] && data[d].length === P_GRID.length); }
+
+// Run the Monte Carlo in small chunks so the chart fills in live and the page stays responsive.
+function sweep() {
+  if (sweeping) return;
+  sweeping = true;
+  DISTANCES.forEach(d => (data[d] = []));
+  const jobs = [];
+  P_GRID.forEach((p, i) => DISTANCES.forEach(d => jobs.push({ d, i, p })));
+  const r = QEC.makeRng(QEC.randomSeed());
+  let j = 0;
+  (function next() {
+    const t0 = performance.now();
+    while (j < jobs.length && performance.now() - t0 < 30) {
+      const { d, i, p } = jobs[j++];
+      data[d][i] = QEC.sim.logicalErrorRate(CODES[d], p, SHOTS, r).rate;
+    }
+    $('h-prog').textContent = Math.round(100 * j / jobs.length) + '%';
+    drawChart();
+    if (j < jobs.length) setTimeout(next, 0);
+    else {
+      sweeping = false;
+      renderTable();
+      setStatus(`Sweep done: ${SHOTS} shots per point, ${jobs.length * SHOTS} shots in total.`, 'success');
+      bites.notify('sweep');
+      updateUI();
+    }
+  })();
+  updateUI();
+}
+
+// Where d = 7 stops beating d = 3 (linear interpolation between grid points).
+function crossing() {
+  for (let i = 1; i < P_GRID.length; i++) {
+    const a = data[7][i - 1] - data[3][i - 1], b = data[7][i] - data[3][i];
+    if (a < 0 && b >= 0) return P_GRID[i - 1] + (P_GRID[i] - P_GRID[i - 1]) * (-a / (b - a));
+  }
+  return null;
+}
+
+function lockIn() {
+  if (!haveData()) { setStatus('Wait for the sweep to finish.', 'warn'); return; }
+  const g = Number($('guess').value) / 1000, x = crossing();
+  if (x === null) { setStatus('No clear crossing in this run — press RUN SWEEP again.', 'warn'); return; }
+  const off = Math.abs(g - x);
+  if (off <= 0.02) {
+    setStatus(`✓ Spot on! Your ${fmtPct(g)} vs measured ≈ ${fmtPct(x)}.`, 'success');
+    bites.notify('guess');
+  } else {
+    setStatus(`Not quite: look where the ${g < x ? 'curves are still apart — move right' : 'curves already swapped — move left'}.`, 'warn');
+  }
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function setStatus(msg, cls) { $('status').textContent = msg; $('status').className = 'status ' + cls; }
+const fmtPct = v => (v * 100).toFixed(v < 0.01 ? 2 : 1) + '%';
+
+function updateUI() {
+  $('p-val').textContent = Math.round(pNow() * 100) + '%';
+  $('guess-val').textContent = (Number($('guess').value) / 10).toFixed(1) + '%';
+  $('h-shots').textContent = shots;
+  $('h-fails').textContent = fails;
+  document.querySelectorAll('.dbtn').forEach(b => b.classList.toggle('active', Number(b.dataset.d) === dist));
+  $('btn-sweep').disabled = sweeping || !bites.open;
+  $('btn-roll').disabled = !bites.open;
+  drawChart();
+}
+bites.onChange = updateUI;
+
+$('btn-roll').onclick = () => { if (bites.open) roll(); };
+$('btn-sweep').onclick = () => { if (bites.open) sweep(); };
+$('btn-lock').onclick = lockIn;
+$('p').oninput = updateUI;
+$('guess').oninput = updateUI;
+document.querySelectorAll('.dbtn').forEach(b => (b.onclick = () => { dist = Number(b.dataset.d); last = null; updateUI(); }));
+
+// ── One-shot canvas ────────────────────────────────────────────────────────
+function draw(t) {
+  ctx.clearRect(0, 0, W, W);
+  const code = CODES[dist], g = QEC.ui.surface.geometry(dist, W);
+  const shot = last && last.d === dist ? last : null;
+  const syn = shot ? shot.syn : code.stabs.map(() => 0);
+  QEC.ui.surface.drawTiles(ctx, code, g, syn, t);
+  const qr = Math.max(5, g.sp * 0.16);
+  const residual = shot ? P.compose(shot.err, shot.corr) : null;
+  for (let q = 0; q < code.n; q++) {
+    const { r, c } = code.data[q], x = g.px(c), y = g.py(r);
+    const err = shot && shot.err.x[q];
+    ctx.fillStyle = err ? '#ff4455' : '#071022';
+    ctx.strokeStyle = err ? '#ff8899' : '#7fa8c0';
+    ctx.lineWidth = 1.5;
+    if (err) glow(ctx, '#ff4455', 12);
+    ctx.beginPath(); ctx.arc(x, y, qr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    noGlow(ctx);
+    if (shot && shot.corr.x[q]) {
+      ctx.strokeStyle = '#00ccff'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(x, y, qr + 5, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (shot && shot.status !== 'ok' && residual.x[q]) {
+      ctx.save();
+      ctx.strokeStyle = '#ffee00'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.arc(x, y, qr + 10, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+// ── Chart (SVG) ────────────────────────────────────────────────────────────
+const CH = { w: 440, h: 330, l: 52, r: 44, t: 14, b: 42, ymin: 1e-3, ymax: 1, xmax: 0.2 };
+const sx = p => CH.l + (p / CH.xmax) * (CH.w - CH.l - CH.r);
+const sy = v => {
+  const k = (Math.log10(Math.max(v, CH.ymin)) - Math.log10(CH.ymin)) / (Math.log10(CH.ymax) - Math.log10(CH.ymin));
+  return CH.h - CH.b - k * (CH.h - CH.t - CH.b);
+};
+const svgNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, txt) {
+  const e = document.createElementNS(svgNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (txt !== undefined) e.textContent = txt;
+  return e;
+}
+
+function drawChart() {
+  const svg = $('chart');
+  svg.innerHTML = '';
+  // grid + axes (recessive)
+  for (const [v, lbl] of [[1e-3, '0.1%'], [1e-2, '1%'], [1e-1, '10%'], [1, '100%']]) {
+    svg.appendChild(el('line', { x1: CH.l, x2: CH.w - CH.r, y1: sy(v), y2: sy(v), stroke: 'var(--chart-grid)' }));
+    svg.appendChild(el('text', { x: CH.l - 8, y: sy(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--chart-muted)' }, lbl));
+  }
+  for (const p of [0, 0.05, 0.1, 0.15, 0.2]) {
+    svg.appendChild(el('line', { x1: sx(p), x2: sx(p), y1: CH.t, y2: CH.h - CH.b, stroke: 'var(--chart-grid)' }));
+    svg.appendChild(el('text', { x: sx(p), y: CH.h - CH.b + 18, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--chart-muted)' }, Math.round(p * 100) + '%'));
+  }
+  svg.appendChild(el('text', { x: (CH.l + CH.w - CH.r) / 2, y: CH.h - 8, 'text-anchor': 'middle', 'font-size': 12, fill: 'var(--chart-ink)' }, 'glitch rate per qubit  p'));
+  svg.appendChild(el('text', { x: 14, y: (CH.t + CH.h - CH.b) / 2, 'text-anchor': 'middle', 'font-size': 12, fill: 'var(--chart-ink)', transform: `rotate(-90 14 ${(CH.t + CH.h - CH.b) / 2})` }, 'logical error rate'));
+
+  // unprotected qubit: logical = physical
+  const diag = [];
+  for (let p = 0.001; p <= 0.2001; p += 0.0025) diag.push(`${sx(p)},${sy(p)}`);
+  svg.appendChild(el('polyline', { points: diag.join(' '), fill: 'none', stroke: 'var(--chart-muted)', 'stroke-width': 1.5, 'stroke-dasharray': '5 5' }));
+
+  // threshold guess marker
+  if ($('guess-row').style.display === 'flex') {
+    const g = Number($('guess').value) / 1000;
+    svg.appendChild(el('line', { x1: sx(g), x2: sx(g), y1: CH.t, y2: CH.h - CH.b, stroke: '#ffee00', 'stroke-width': 2, 'stroke-dasharray': '6 4' }));
+  }
+
+  // series: 2px lines, 8px markers with a surface ring. A rate of 0 has no place on a log axis
+  // (it means "fewer than 1 in SHOTS"), so those points are left out; the table lists them.
+  const ends = [];
+  for (const d of DISTANCES) {
+    const pts = (data[d] || []).map((v, i) => (v ? [sx(P_GRID[i]), sy(v)] : null)).filter(Boolean);
+    if (!pts.length) continue;
+    svg.appendChild(el('polyline', { points: pts.map(p => `${p[0]},${p[1]}`).join(' '), fill: 'none', stroke: SERIES[d], 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+    for (const [x, y] of pts) svg.appendChild(el('circle', { cx: x, cy: y, r: 4, fill: SERIES[d], stroke: 'var(--bg)', 'stroke-width': 2 }));
+    if ((data[d] || []).length === P_GRID.length) ends.push({ d, y: pts[pts.length - 1][1] });
+  }
+  // direct labels at the right end, nudged apart so they never overlap
+  ends.sort((a, b) => a.y - b.y);
+  for (let k = 1; k < ends.length; k++) ends[k].y = Math.max(ends[k].y, ends[k - 1].y + 12);
+  for (const { d, y } of ends) svg.appendChild(el('text', { x: sx(0.2) + 8, y: y + 4, 'font-size': 11, fill: 'var(--chart-ink)' }, `d=${d}`));
+
+  if (!haveData() && !sweeping) {
+    svg.appendChild(el('text', { x: (CH.l + CH.w - CH.r) / 2, y: (CH.t + CH.h - CH.b) / 2, 'text-anchor': 'middle', 'font-size': 13, fill: 'var(--chart-muted)' }, 'press ▶ RUN SWEEP'));
+  }
+
+  // hover layer: crosshair + tooltip at the nearest p
+  const hit = el('rect', { x: CH.l, y: CH.t, width: CH.w - CH.l - CH.r, height: CH.h - CH.t - CH.b, fill: 'transparent' });
+  hit.addEventListener('mousemove', onHover);
+  hit.addEventListener('mouseleave', () => { $('tip').style.display = 'none'; const c = $('cross'); if (c) c.remove(); });
+  svg.appendChild(hit);
+}
+
+function onHover(e) {
+  if (!haveData()) return;
+  const svg = $('chart'), r = svg.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (CH.w / r.width);
+  const p = (x - CH.l) / (CH.w - CH.l - CH.r) * CH.xmax;
+  const i = Math.max(0, Math.min(P_GRID.length - 1, Math.round(p * 100) - 1));
+  let c = $('cross');
+  if (!c) { c = el('line', { id: 'cross', stroke: 'var(--chart-muted)', 'stroke-width': 1, y1: CH.t, y2: CH.h - CH.b, 'pointer-events': 'none' }); svg.insertBefore(c, svg.lastChild); }
+  c.setAttribute('x1', sx(P_GRID[i])); c.setAttribute('x2', sx(P_GRID[i]));
+  const tip = $('tip');
+  tip.innerHTML = `<b>p = ${Math.round(P_GRID[i] * 100)}%</b><br>` +
+    DISTANCES.map(d => `<span class="sw2" style="background:${SERIES[d]}"></span>d=${d}: ${fmtPct(data[d][i])}`).join('<br>');
+  tip.style.display = 'block';
+  const px = sx(P_GRID[i]) * r.width / CH.w;
+  tip.style.left = (px > r.width / 2 ? px - tip.offsetWidth - 12 : px + 12) + 'px';
+  tip.style.top = '24px';
+}
+
+function renderTable() {
+  const rows = P_GRID.map((p, i) => `<tr><td>${Math.round(p * 100)}%</td>${DISTANCES.map(d => `<td>${fmtPct(data[d][i])}</td>`).join('')}</tr>`);
+  $('table').innerHTML = `<tr><th>p</th>${DISTANCES.map(d => `<th>d=${d}</th>`).join('')}</tr>` + rows.join('');
+}
+
+$('legend').innerHTML = DISTANCES.map(d => `<span><i style="background:${SERIES[d]}"></i>d=${d} (${d * d} qubits)</span>`).join('') +
+  '<span><i style="background:none;border-top:2px dashed var(--chart-muted)"></i>bare qubit</span>';
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+const chapter = QEC.ui.chapter({ id: 'ch5', el: $('levels'), levels: LEVELS.map(l => l.name), start: startLevel });
+chapter.begin();
+QEC.ui.loop(draw);
+</script>
+</body>
+</html>
