@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Surface Code</title>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+#btn-glitch { color: var(--amber); border-color: #885500; }
+canvas { cursor: pointer; }
+.tools { display: flex; gap: 6px; align-items: center; }
+.tools-label { font-size: 0.7em; color: var(--dim); letter-spacing: 2px; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="index.html">← MAP</a>
+  <div><div class="eyebrow">CHAPTER 4</div><h1>SURFACE CODE</h1></div>
+  <div class="levels" id="levels"></div>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <div class="hud">
+      <div class="chip"><span id="h-goal-lbl">SOLVED</span> <b id="h-goal">0/0</b></div>
+      <div class="chip">LIT <b id="h-lit">0</b></div>
+      <div class="chip">HINTS <b id="h-hints">0</b></div>
+    </div>
+    <canvas id="cv" width="560" height="560"></canvas>
+    <div class="controls">
+      <div class="tools" id="tools">
+        <span class="tools-label">APPLY</span>
+        <button class="btn tool-X" data-tool="X">X</button>
+        <button class="btn tool-Z" data-tool="Z">Z</button>
+        <button class="btn tool-Y" data-tool="Y">Y</button>
+      </div>
+      <button class="btn" id="btn-glitch">⚡ GLITCH</button>
+      <button class="btn" id="btn-hint">? HINT</button>
+      <button class="btn go" id="btn-check">✓ CHECK</button>
+      <button class="btn next" id="btn-round">NEXT ROUND →</button>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:rgba(255,136,34,.5);border:1px solid #ff8822"></span> Z-check: catches X flips</span>
+      <span><span class="sw" style="background:rgba(0,204,255,.4);border:1px solid #00ccff"></span> X-check: catches Z flips</span>
+      <span>bright = lit (odd number of flips around it)</span>
+    </div>
+    <div class="status info" id="status"></div>
+  </section>
+  <aside class="bites" id="bites"></aside>
+</main>
+
+<script src="js/core/rng.js"></script>
+<script src="js/core/pauli.js"></script>
+<script src="js/core/codes.js"></script>
+<script src="js/core/decoder.js"></script>
+<script src="js/ui/progress.js"></script>
+<script src="js/ui/canvas.js"></script>
+<script src="js/ui/bites.js"></script>
+<script src="js/ui/surface.js"></script>
+<script>
+'use strict';
+const P = QEC.Pauli, D = QEC.decoder;
+const { glow, noGlow, text, pointer } = QEC.ui;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const W = cv.width;
+const rng = QEC.makeRng(QEC.randomSeed());
+const bites = new QEC.ui.Bites($('bites'));
+
+const d = 3, code = QEC.codes.rotatedSurfaceCode(d), N = code.n;
+const G = QEC.ui.surface.geometry(d, W, 150), { px, py } = G, QR = 22;
+const COL = QEC.ui.surface.COL;
+const tilePath = s => QEC.ui.surface.tilePath(ctx, code, s, G);
+const qubitAt = (r, c) => r * d + c;
+
+// ── Levels ─────────────────────────────────────────────────────────────────
+const single = types => () => P.on(N, [rng.int(N)], rng.pick(types));
+// Level 3: glitch on one of the two qubits under a weight-2 X-check (top edge, then bottom edge).
+const TWINS = [[qubitAt(0, 1), qubitAt(0, 2)], [qubitAt(2, 0), qubitAt(2, 1)]];
+
+const LEVELS = [
+  {
+    name: 'Z-CHECKS', goal: 3, tools: ['X'], errors: single(['X']),
+    bites: [
+      'Welcome to the <b>surface code</b>. The 9 circles are data qubits that together store <b>one</b> well-protected qubit.',
+      'The <span class="z">orange tiles</span> are <b>Z-checks</b>: the same "are you equal?" question as before, asked to 2 or 4 qubits at once. A tile lights up when an <em>odd</em> number of its qubits got an <span class="x">X</span> flip.',
+      { t: 'Let an <span class="x">X</span> glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Find the qubit that touches <em>every</em> lit tile and <em>no</em> dark one. Click it to apply X, then CHECK.', wait: 'solved', hint: 'fix it, then CHECK' },
+      'Solve 3 rounds. Stuck? <b>? HINT</b> shows what a decoder would do.',
+    ],
+  },
+  {
+    name: 'X-CHECKS', goal: 3, tools: ['Z'], errors: single(['Z']),
+    bites: [
+      'Now the <span class="x">cyan tiles</span>: <b>X-checks</b>. They ask the same question in the <em>phase</em> direction, so they catch <span class="z">Z</span> flips.',
+      'This is exactly what the repetition code was missing. Fix 3 phase flips.',
+    ],
+  },
+  {
+    name: 'TWIN FIX', goal: 2, countAll: true, tools: ['X'],
+    errors: round => P.on(N, [rng.pick(TWINS[round % 2])], 'X'),
+    candidates: round => TWINS[round % 2],
+    bites: [
+      { t: 'A puzzle. Let the glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'The two <b style="color:#ffee00">yellow-ringed</b> qubits explain the lit tile <em>equally well</em>. Pick either one, then CHECK.', wait: 'checked', hint: 'pick one, CHECK' },
+      'Play one more round — try the <em>other</em> qubit this time.',
+    ],
+  },
+  {
+    name: 'Y = X+Z', goal: 4, tools: ['X', 'Z', 'Y'], errors: single(['X', 'Z', 'Y']),
+    bites: [
+      'A <span class="y">Y</span> glitch is an X and a Z flip at once — it lights tiles of <b>both</b> colours.',
+      'All three tools are yours now (keys <b>1 2 3</b>). Fix 4 random glitches.',
+    ],
+  },
+  {
+    name: 'OVERLOAD', goal: 3, countAll: true, tools: ['X', 'Z', 'Y'],
+    errors: () => {
+      const [a, b] = rng.sample(N, 2);
+      const e = P.on(N, [a], rng.pick(['X', 'Z', 'Y']));
+      return P.applyAt(e, b, rng.pick(['X', 'Z', 'Y']));
+    },
+    bites: [
+      'Final level: <b>two</b> glitches per round.',
+      'A distance-3 patch only <em>promises</em> to fix one. Sometimes you\'ll be fooled no matter how clever you are. Play 3 rounds and see.',
+    ],
+  },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let S = null, hover = -1, hintUntil = 0, hintCorr = null, explainedTwin = false;
+
+function startLevel(i) {
+  const lv = LEVELS[i];
+  S = { lv, idx: i, solved: 0, played: 0, round: 0, hints: 0, tool: lv.tools[0] };
+  newRound();
+  bites.play(lv.bites, () => { if (S.goalReached) levelDone(); else updateUI(); });
+}
+
+function newRound() {
+  S.phase = 'ready';
+  S.err = P.identity(N);
+  S.corr = P.identity(N);
+  S.result = null;
+  S.candidates = [];
+  hintUntil = 0;
+  setStatus('All quiet. Press ⚡ GLITCH.', 'info');
+  updateUI();
+}
+
+const syndrome = () => D.syndrome(code, P.compose(S.err, S.corr));
+
+function glitch() {
+  if (S.phase !== 'ready' || !bites.open) return;
+  S.err = S.lv.errors(S.round);
+  S.candidates = S.lv.candidates ? S.lv.candidates(S.round) : [];
+  S.phase = 'hidden';
+  setStatus('⚡ Glitch! Read the lit tiles.', 'error');
+  bites.notify('glitch');
+  updateUI();
+}
+
+function apply(q) {
+  if (S.phase !== 'hidden' || !bites.open) return;
+  P.applyAt(S.corr, q, S.tool);
+  const lit = syndrome().filter(Boolean).length;
+  setStatus(lit ? `${lit} tile${lit > 1 ? 's' : ''} still lit.` : 'All tiles dark. Press ✓ CHECK.', lit ? 'info' : 'success');
+  updateUI();
+}
+
+function hint() {
+  if (S.phase !== 'hidden' || !bites.open) return;
+  // what a perfect (minimum-weight) decoder would add on top of your current fixes
+  hintCorr = D.lookupDecode(code, syndrome());
+  hintUntil = performance.now() + 2500;
+  S.hints++;
+  setStatus(P.isIdentity(hintCorr) ? 'The decoder would stop here.' : 'Dashed badges: the decoder\'s suggestion.', 'info');
+  updateUI();
+}
+
+function check() {
+  if (S.phase !== 'hidden' || !bites.open) return;
+  if (!D.isZero(syndrome())) { setStatus('Some tiles are still lit — keep going.', 'warn'); return; }
+  S.phase = 'revealed';
+  S.result = D.residualStatus(code, S.err, S.corr);
+  S.played++;
+  S.round++;
+  const exact = P.equal(S.err, S.corr);
+  // advance the briefing first, so feedback below lands under the new bite
+  bites.notify('checked');
+  if (S.result === 'ok') bites.notify('solved');
+  if (S.result === 'ok') {
+    S.solved++;
+    if (exact) setStatus('✓ Fixed — exactly the glitched qubit.', 'success');
+    else {
+      setStatus('✓ Fixed — with a different fix than the glitch! Still perfect.', 'success');
+      if (!explainedTwin) {
+        explainedTwin = true;
+        bites.feedback('Your fix was not on the glitched qubit, yet it worked. Glitch + fix together form one of the <b>checks</b> (green outline) — and checks never change the stored qubit. Many fixes are equally good: that\'s called <b>degeneracy</b>.');
+      }
+    }
+  } else {
+    setStatus('✗ Logical error! The tiles are dark, but the stored qubit got flipped.', 'error');
+    bites.feedback('Glitch + fix form a chain from one edge of the patch to the opposite edge (yellow). Such a chain is a <b>logical operator</b>: it flips the stored qubit while every check stays quiet.');
+  }
+  updateUI();
+  const count = S.lv.countAll ? S.played : S.solved;
+  // wrap up once the goal is met — but never cut off a bite the player is still reading
+  if (count >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 900); }
+}
+
+function levelDone() {
+  chapter.complete(S.idx);
+  const last = chapter.isLast(S.idx);
+  bites.finish(last
+    ? '✓ <b>Chapter complete.</b> This 3×3 patch is <b>one logical qubit</b>. Bigger patches (distance 5, 7, …) fix more glitches at once — but only if glitches are rare enough. How rare? → Chapter 5.'
+    : '✓ <b>Level complete.</b>',
+    last
+      ? [{ label: 'CHAPTER 5 →', onClick: () => (location.href = 'ch5-threshold.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
+      : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(S.idx + 1) }]);
+  S.phase = 'done';
+  updateUI();
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function setStatus(msg, cls) { $('status').textContent = msg; $('status').className = 'status ' + cls; }
+
+function setTool(t) {
+  if (!S.lv.tools.includes(t)) return;
+  S.tool = t;
+  updateUI();
+}
+
+function updateUI() {
+  if (!S) return;
+  const lv = S.lv;
+  $('h-goal-lbl').textContent = lv.countAll ? 'ROUNDS' : 'SOLVED';
+  $('h-goal').textContent = `${lv.countAll ? S.played : S.solved}/${lv.goal}`;
+  $('h-lit').textContent = S.phase === 'ready' ? 0 : syndrome().filter(Boolean).length;
+  $('h-hints').textContent = S.hints;
+  document.querySelectorAll('[data-tool]').forEach(b => {
+    b.style.display = lv.tools.includes(b.dataset.tool) ? '' : 'none';
+    b.classList.toggle('active', b.dataset.tool === S.tool);
+  });
+  const act = bites.open;
+  $('btn-glitch').disabled = S.phase !== 'ready' || !act;
+  $('btn-hint').disabled = S.phase !== 'hidden' || !act;
+  $('btn-check').disabled = S.phase !== 'hidden' || !act;
+  $('btn-round').style.display = S.phase === 'revealed' ? '' : 'none';
+}
+bites.onChange = updateUI;
+
+$('btn-glitch').onclick = glitch;
+$('btn-hint').onclick = hint;
+$('btn-check').onclick = check;
+$('btn-round').onclick = () => { if (S.phase === 'revealed') newRound(); };
+document.querySelectorAll('[data-tool]').forEach(b => (b.onclick = () => setTool(b.dataset.tool)));
+document.addEventListener('keydown', e => {
+  const t = { 1: 'X', 2: 'Z', 3: 'Y', x: 'X', z: 'Z', y: 'Y' }[e.key.toLowerCase()];
+  if (t) setTool(t);
+});
+
+function hitQubit(p) {
+  for (let q = 0; q < N; q++) {
+    const { r, c } = code.data[q];
+    if ((p.x - px(c)) ** 2 + (p.y - py(r)) ** 2 <= (QR + 12) ** 2) return q;
+  }
+  return -1;
+}
+cv.addEventListener('click', e => { const q = hitQubit(pointer(cv, e)); if (q >= 0) apply(q); });
+cv.addEventListener('mousemove', e => { hover = hitQubit(pointer(cv, e)); });
+cv.addEventListener('mouseleave', () => { hover = -1; });
+
+// ── Drawing ────────────────────────────────────────────────────────────────
+function badge(x, y, letter, { dashed = false } = {}) {
+  ctx.save();
+  ctx.strokeStyle = COL[letter]; ctx.fillStyle = dashed ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 2;
+  if (dashed) ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.arc(x, y, 13, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  text(ctx, letter, x, y + 1, { font: 'bold 15px Courier New', color: COL[letter] });
+}
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, W);
+  if (!S) return;
+  const syn = S.phase === 'ready' ? code.stabs.map(() => 0) : syndrome();
+  const revealed = S.phase === 'revealed' || S.phase === 'done';
+  const pulse = 0.6 + 0.4 * Math.sin(t * 0.006);
+  const residual = P.compose(S.err, S.corr);
+
+  QEC.ui.surface.drawTiles(ctx, code, G, syn, t);
+
+  // degeneracy: highlight a check that equals glitch + fix
+  if (revealed && S.result === 'ok' && !P.isIdentity(residual)) {
+    code.stabPaulis.forEach((sp, k) => {
+      if (!P.equal(sp, residual)) return;
+      ctx.save();
+      tilePath(code.stabs[k]);
+      ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 4; glow(ctx, '#00ff88', 18 * pulse);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  // logical error: draw the chain through the leftover qubits
+  if (revealed && S.result === 'logical') {
+    const qs = [];
+    for (let q = 0; q < N; q++) if (residual.x[q] || residual.z[q]) qs.push(q);
+    ctx.save();
+    ctx.strokeStyle = '#ffee00'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]);
+    glow(ctx, '#ffee00', 14 * pulse);
+    for (const q of qs) {
+      const { r, c } = code.data[q];
+      ctx.beginPath(); ctx.arc(px(c), py(r), QR + 9, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // qubits
+  const showHint = hintCorr && t < hintUntil && S.phase === 'hidden';
+  for (let q = 0; q < N; q++) {
+    const { r, c } = code.data[q], x = px(c), y = py(r);
+    const errHere = revealed && (S.err.x[q] || S.err.z[q]);
+    ctx.save();
+    ctx.lineWidth = 2.5;
+    ctx.fillStyle = '#071022';
+    ctx.strokeStyle = errHere ? '#ff4455' : hover === q && S.phase === 'hidden' ? '#ffffff' : '#7fa8c0';
+    glow(ctx, ctx.strokeStyle, hover === q ? 16 : 6);
+    ctx.beginPath(); ctx.arc(x, y, QR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    if (S.candidates.includes(q) && S.phase === 'hidden') {
+      ctx.save();
+      ctx.strokeStyle = '#ffee00'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+      glow(ctx, '#ffee00', 10 * pulse);
+      ctx.beginPath(); ctx.arc(x, y, QR + 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
+    const fix = P.get(S.corr, q);
+    if (fix !== 'I') badge(x, y, fix);
+    else text(ctx, '?', x, y + 1, { font: 'bold 15px Courier New', color: '#335566' });
+    if (showHint && P.get(hintCorr, q) !== 'I') badge(x + 20, y - 20, P.get(hintCorr, q), { dashed: true });
+    if (errHere) text(ctx, '⚡' + P.get(S.err, q), x, y + QR + 16, { font: 'bold 14px Courier New', color: '#ff4455' });
+  }
+
+  if (revealed && S.result) {
+    const ok = S.result === 'ok';
+    glow(ctx, ok ? '#00ff88' : '#ff4455', 20);
+    text(ctx, ok ? '✓ FIXED' : '✗ LOGICAL ERROR', W / 2, 24, { font: 'bold 22px Courier New', color: ok ? '#00ff88' : '#ff4455' });
+    noGlow(ctx);
+  }
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+const chapter = QEC.ui.chapter({ id: 'ch4', el: $('levels'), levels: LEVELS.map(l => l.name), start: startLevel });
+chapter.begin();
+QEC.ui.loop(draw);
+</script>
+</body>
+</html>
