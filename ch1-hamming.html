@@ -43,6 +43,15 @@ body {
   text-decoration: none;
 }
 
+/* Optional extra puzzles — deliberately quieter than CHAPTER 2. */
+#btn-challenge {
+  background: rgba(255,255,255,0.04);
+  color: #8fa1b3;
+  border: 1px solid #566a7e;
+  display: none;
+}
+#btn-challenge:hover { background: rgba(255,255,255,0.08); color: #ccddee; }
+
 h1 {
   color: #00ffff;
   font-size: 1.7em;
@@ -52,7 +61,7 @@ h1 {
 }
 
 .subtitle {
-  color: #336677;
+  color: #4f93ab;
   font-size: 0.72em;
   letter-spacing: 3px;
   margin-bottom: 14px;
@@ -73,7 +82,7 @@ h1 {
   border-radius: 5px;
   padding: 5px 14px;
   font-size: 0.78em;
-  color: #4488aa;
+  color: #66aacc;
   letter-spacing: 1px;
 }
 .hud-chip b { color: #00eeff; }
@@ -130,8 +139,8 @@ button {
 
 #btn-reset {
   background: rgba(255,255,255,0.04);
-  color: #667788;
-  border: 1px solid #334455;
+  color: #8fa1b3;
+  border: 1px solid #566a7e;
 }
 #btn-reset:hover { background: rgba(255,255,255,0.08); color: #99aabb; }
 
@@ -150,7 +159,7 @@ button {
 #status-bar {
   margin-top: 10px;
   font-size: 0.82em;
-  color: #445566;
+  color: #8fa1b3;
   text-align: center;
   min-height: 22px;
   letter-spacing: 1px;
@@ -159,7 +168,7 @@ button {
 }
 #status-bar.success { color: #00ff88; text-shadow: 0 0 10px #00ff8888; }
 #status-bar.error   { color: #ff4444; text-shadow: 0 0 10px #ff000088; }
-#status-bar.info    { color: #00bbdd; }
+#status-bar.info    { color: #22ccee; }
 #status-bar.warn    { color: #ffaa00; }
 
 #log-wrap {
@@ -174,8 +183,8 @@ button {
   padding: 0 4px;
   margin-bottom: 6px;
 }
-#log-label { color: #334455; font-size: 0.72em; letter-spacing: 2px; }
-#legend { color: #334455; font-size: 0.68em; }
+#log-label { color: #7e92a6; font-size: 0.72em; letter-spacing: 2px; }
+#legend { color: #7e92a6; font-size: 0.68em; }
 
 #log-entries {
   background: rgba(0,0,0,0.45);
@@ -206,14 +215,14 @@ button {
 
 .log-row .nid  { color: #00aacc; font-weight: bold; min-width: 64px; }
 .log-row .pat  { color: #00ffcc; background: rgba(0,200,150,0.08); border: 1px solid rgba(0,200,150,0.25); border-radius: 4px; padding: 2px 10px; font-size: 0.92em; flex: 1; }
-.log-row.empty .pat  { color: #884444; border-color: rgba(255,80,80,0.25); background: rgba(255,0,0,0.05); }
+.log-row.empty .pat  { color: #e08080; border-color: rgba(255,80,80,0.25); background: rgba(255,0,0,0.05); }
 .log-row.collide .nid { color: #ff4444; }
 .log-row.collide .pat { color: #ff6666; border-color: rgba(255,80,80,0.4); background: rgba(255,0,0,0.1); }
 
 .hint-bar {
   margin-top: 10px;
-  font-size: 0.72em;
-  color: #334455;
+  font-size: 0.76em;
+  color: #8fa1b3;
   text-align: center;
   letter-spacing: 1px;
   max-width: 700px;
@@ -230,8 +239,8 @@ details#concept-panel {
 details#concept-panel summary {
   padding: 8px 18px;
   cursor: pointer;
-  color: #0099bb;
-  font-size: 0.75em;
+  color: #2ab6d8;
+  font-size: 0.78em;
   letter-spacing: 2px;
   list-style: none;
   user-select: none;
@@ -244,19 +253,19 @@ details#concept-panel summary::before {
   content: '▶';
   font-size: 0.8em;
   transition: transform 0.2s;
-  color: #006688;
+  color: #2b9fc4;
   display: inline-block;
 }
 details#concept-panel[open] summary::before { transform: rotate(90deg); }
 .concept-body {
   padding: 0 18px 12px;
-  font-size: 0.73em;
-  color: #556677;
+  font-size: 0.78em;
+  color: #b3c2d1;
   line-height: 1.9;
 }
-.concept-body b { color: #0099bb; }
+.concept-body b { color: #2ab6d8; }
 .concept-level-intro {
-  color: #4a6a7a;
+  color: #c3d1de;
   border-left: 2px solid rgba(0,204,255,0.2);
   padding-left: 10px;
   margin-bottom: 8px;
@@ -297,7 +306,7 @@ details#concept-panel[open] summary::before { transform: rotate(90deg); }
 </details>
 
 <div id="hud">
-  <div class="hud-chip">LEVEL <b id="hl-num">1</b></div>
+  <div class="hud-chip"><span id="hl-kind">LEVEL</span> <b id="hl-num">1</b></div>
   <div class="hud-chip">NODES <b id="hl-nodes">3</b></div>
   <div class="hud-chip">SENSORS LEFT <b id="hl-budget">2</b></div>
   <div class="hud-chip" id="level-title">BINARY BASICS</div>
@@ -311,6 +320,7 @@ details#concept-panel[open] summary::before { transform: rotate(90deg); }
   <button id="btn-test">▶ TEST</button>
   <button id="btn-next">NEXT LEVEL →</button>
   <button id="btn-chapter" onclick="location.href='ch2-qubit-errors.html'">CHAPTER 2 →</button>
+  <button id="btn-challenge">CHALLENGES →</button>
 </div>
 
 <div id="status-bar" class="info">Place Sensors, connect them to Data Nodes, then hit TEST.</div>
@@ -400,7 +410,7 @@ const LEVELS = [
     title: 'HAMMING GRID',
     hint: 'TIP: This IS the Hamming Code. Assign each node one of the 7 binary patterns from 001 to 111.',
     explain: '7 Nodes, 3 Sensors, 7 patterns — this puzzle is the <b>Hamming(7,4) error-correcting code</b>! In the real code, each bit position is labelled with a unique 3-bit binary number (001 through 111). When a bit flips (glitches), the sensors whose patterns cover that position all fire — and the <em>combination</em> of alarm signals pinpoints exactly which bit failed. This is the mathematical foundation of reliable data storage and memory correction in every computer.',
-    takeaway: 'You just built the <b>Hamming(7,4) code</b>: 3 checks pinpoint any single glitch among 7 nodes. Chapter 1 complete! Levels 4–6 are bonus — or move on to <b>qubits</b>, where glitches come in two flavours.',
+    takeaway: 'You just built the <b>Hamming(7,4) code</b>: 3 checks pinpoint any single glitch among 7 nodes. <b>Chapter 1 complete</b> — on to <b>qubits</b>, where glitches come in two flavours. Want more of this puzzle first? Three optional <b>challenges</b> are one click away.',
     sensorBudget: 3,
     nodes: (() => {
       const lab = ['A','B','C','D','E','F','G'];
@@ -409,9 +419,10 @@ const LEVELS = [
   },
   {
     id: 4,
+    challenge: true,
     title: 'QUAD SIGNAL',
     hint: 'TIP: 4 sensors give 15 patterns. You need 9 — pick any 9 distinct combinations.',
-    explain: 'With 4 Sensors, 2⁴ − 1 = <b>15 unique patterns</b> are possible. You only need 9 of them, so there\'s room to experiment. Think of each sensor as a <b>bit position</b> (S1=bit 1, S2=bit 2, …). Each node needs a unique 4-bit combination — just pick any 9 of the 15.',
+    explain: '<b>Optional challenge.</b> With 4 Sensors, 2⁴ − 1 = <b>15 unique patterns</b> are possible. You only need 9 of them, so there\'s room to experiment. Think of each sensor as a <b>bit position</b> (S1=bit 1, S2=bit 2, …). Each node needs a unique 4-bit combination — just pick any 9 of the 15.',
     sensorBudget: 4,
     nodes: (() => {
       const lab = 'ABCDEFGHI'.split('');
@@ -420,6 +431,7 @@ const LEVELS = [
   },
   {
     id: 5,
+    challenge: true,
     title: 'DENSE MESH',
     hint: 'TIP: 12 nodes, 15 available patterns — only 3 can go unused. Map them all out before wiring.',
     explain: '12 nodes with a 4-sensor budget means <b>only 3 of the 15 patterns can go unused</b>. The two-ring layout adds visual distance but not extra patterns — you still need 12 distinct 4-bit combinations spread across all nodes without any pair sharing a pattern.',
@@ -433,6 +445,7 @@ const LEVELS = [
   },
   {
     id: 6,
+    challenge: true,
     title: 'EXTENDED HAMMING',
     hint: 'TIP: All 15 patterns must be used — assign each node a unique 4-bit code from 0001 to 1111.',
     explain: '15 nodes, 4 sensors, every pattern used — this is the <b>Hamming(15,11) code</b>, the 4-bit generalization of Level 3. In real memory systems it locates and corrects any single-bit error across 11 data bits using just 4 parity checks. Assign each node the unique 4-bit binary pattern matching its position: 0001, 0010, 0011 … 1111.',
@@ -471,6 +484,8 @@ function initLevel(idx) {
   clearLog();
   el('btn-next').style.display = 'none';
   el('btn-chapter').style.display = 'none';
+  el('btn-challenge').style.display = 'none';
+  el('btn-next').textContent = lv.challenge ? 'NEXT CHALLENGE →' : 'NEXT LEVEL →';
   el('takeaway').style.display = 'none';
   el('btn-test').disabled = false;
   el('hint-bar').textContent = lv.hint;
@@ -483,8 +498,12 @@ function initLevel(idx) {
 // ── DOM helpers ───────────────────────────────────────────────────────────────
 const el = id => document.getElementById(id);
 
+const CORE_LEVELS = LEVELS.filter(l => !l.challenge).length;
+
 function updateHUD() {
-  el('hl-num').textContent    = LEVELS[S.lvIdx].id;
+  const lv = LEVELS[S.lvIdx];
+  el('hl-kind').textContent  = lv.challenge ? 'CHALLENGE' : 'LEVEL';
+  el('hl-num').textContent   = lv.challenge ? lv.id - CORE_LEVELS : lv.id;
   el('hl-nodes').textContent  = S.nodes.length;
   el('hl-budget').textContent = S.budget;
 }
@@ -1089,14 +1108,19 @@ function finish() {
     setStatus('✓ ALL PATTERNS UNIQUE — Level Complete!', 'success');
     const lv = LEVELS[S.lvIdx];
     if (lv.takeaway) { el('takeaway').innerHTML = lv.takeaway; el('takeaway').style.display = 'block'; }
-    if (S.lvIdx >= 2) {
+    const lastCore = S.lvIdx === CORE_LEVELS - 1;
+    if (S.lvIdx >= CORE_LEVELS - 1) {
       QEC.progress.markDone('ch1');
       el('btn-chapter').style.display = 'inline-block';
     }
-    if (S.lvIdx < LEVELS.length - 1) {
+    if (lastCore) {
+      // Core chapter done: Chapter 2 is the main road, challenges are optional.
+      el('btn-challenge').style.display = 'inline-block';
+      setStatus('✓ ALL PATTERNS UNIQUE — Chapter 1 complete!', 'success');
+    } else if (S.lvIdx < LEVELS.length - 1) {
       el('btn-next').style.display = 'inline-block';
     } else {
-      setStatus('✓ ALL PATTERNS UNIQUE — You completed all levels!', 'success');
+      setStatus('✓ ALL PATTERNS UNIQUE — every challenge solved!', 'success');
     }
     startLoop(); // pulsing success animation
   }
@@ -1111,6 +1135,10 @@ el('btn-reset').addEventListener('click', () => {
 el('btn-next').addEventListener('click', () => {
   stopLoop();
   if (S.lvIdx < LEVELS.length - 1) initLevel(S.lvIdx + 1);
+});
+el('btn-challenge').addEventListener('click', () => {
+  stopLoop();
+  initLevel(CORE_LEVELS);
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
