@@ -61,12 +61,21 @@ const rng = QEC.makeRng(QEC.randomSeed());
 const bites = new QEC.ui.Bites($('bites'));
 
 // ── Levels ─────────────────────────────────────────────────────────────────
-// errors(rng, n) returns the hidden error for one round.
+// errors(n) returns the hidden error for one round. Which qubit (or pair) gets hit
+// is drawn from a shuffle bag, not an independent roll: with 3 qubits, plain draws
+// hand out the same qubit twice in a row a third of the time, which makes the
+// "every glitch lights a different pattern" lesson fall flat.
 const xOn = (n, qs) => P.on(n, qs, 'X');
+const pairs = n => {
+  const out = [];
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) out.push([i, j]);
+  return out;
+};
+const bagQ3 = rng.bagInt(3), bagQ3z = rng.bagInt(3), bagPair3 = rng.bag(pairs(3)), bagCount = rng.bag([1, 2]);
 const LEVELS = [
   {
     name: '3 QUBITS', n: 3, goal: 3,
-    errors: (n) => xOn(n, [rng.int(n)]),
+    errors: (n) => xOn(n, [bagQ3()]),
     bites: [
       'No peeking allowed. So we spread one qubit over <b>three</b>: |0⟩ becomes |000⟩, |1⟩ becomes |111⟩ — and superpositions become mixes of both.',
       'The orange diamonds are <b>checkers</b>. Each asks two neighbours just one thing: <em>are you equal?</em> Lit = different. The checkers never learn whether the qubits are 0 or 1 — so nothing collapses.',
@@ -78,7 +87,7 @@ const LEVELS = [
   },
   {
     name: '5 QUBITS', n: 5, goal: 4,
-    errors: (n) => xOn(n, rng.sample(n, 1 + rng.int(2))),
+    errors: (n) => xOn(n, rng.sample(n, bagCount())),
     bites: [
       'Five qubits, four checkers — and now <b>one or two</b> glitches per round.',
       'Rule of thumb: pick the <b>fewest</b> flips that turn every checker dark. Few glitches are more likely than many. Solve 4 rounds.',
@@ -86,7 +95,7 @@ const LEVELS = [
   },
   {
     name: 'TOO MANY', n: 3, goal: 2, countAll: true,
-    errors: (n) => xOn(n, rng.sample(n, 2)),
+    errors: (n) => xOn(n, bagPair3()),
     bites: [
       'Back to three qubits. But this time <b>two</b> glitches hit at once.',
       'Do what the checkers suggest, then CHECK. Play 2 rounds.',
@@ -94,7 +103,7 @@ const LEVELS = [
   },
   {
     name: 'PHASE SNEAK', n: 3, goal: 1, countAll: true,
-    errors: (n) => P.on(n, [rng.int(n)], 'Z'),
+    errors: (n) => P.on(n, [bagQ3z()], 'Z'),
     bites: [
       { t: 'One last glitch. Go ahead.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'Hm. Every checker stays dark. Nothing to fix? Press CHECK.', wait: 'checked', hint: 'press CHECK' },

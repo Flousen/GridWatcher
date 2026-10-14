@@ -116,10 +116,15 @@ const LEVELS = [
 let S = null;
 let anim = null;     // { from, to, t0, gate }
 let flash = -1e9;    // timestamp of last glitch flash
+let bagTarget = null, bagError = null;
 let measureCount = 0;
 
 function startLevel(i) {
   const lv = LEVELS[i];
+  // Draw angles and error types from shuffle bags, so a level shows the whole
+  // menu (X, Z and Y) instead of handing out the same glitch three times.
+  bagTarget = rng.bag(lv.targets);
+  bagError  = lv.errors.length ? rng.bag(lv.errors) : null;
   S = { lv, idx: i, phase: 'ready', target: null, v: null, fixed: 0, moves: 0, perfect: 0, demo: false, measure: false };
   measureCount = 0;
   newRound();
@@ -128,7 +133,7 @@ function startLevel(i) {
 }
 
 function newRound() {
-  const deg = rng.pick(S.lv.targets);
+  const deg = bagTarget();
   S.target = fromAngle(deg);
   S.v = { ...S.target };
   S.phase = 'ready';
@@ -160,8 +165,8 @@ const canAct = () => bites.open;
 bites.onChange = () => { if (S) updateUI(); };
 
 function glitch() {
-  if (S.phase !== 'ready' || !canAct()) return;
-  const e = rng.pick(S.lv.errors);
+  if (S.phase !== 'ready' || !canAct() || !bagError) return;
+  const e = bagError();
   move(GATES[e](S.v), null);
   S.phase = 'broken';
   flash = performance.now();
