@@ -190,6 +190,42 @@ function hint() {
   updateUI();
 }
 
+// A logical error means glitch + fix add up to a chain across the patch. Which way it
+// runs decides what the player has to add to reach the other, equally consistent fix.
+function logicalChain() {
+  const r = P.compose(S.err, S.corr);
+  const x = !P.commutes(r, code.logicalZ);   // X chain: top ↔ bottom
+  const z = !P.commutes(r, code.logicalX);   // Z chain: left ↔ right
+  const add = [];
+  if (x) add.push('a <span class="x">column of X</span> (top edge to bottom edge)');
+  if (z) add.push('a <span class="z">row of Z</span> (left edge to right edge)');
+  return {
+    flip: x && z ? '<span class="y">Y</span>' : x ? '<span class="x">X</span>' : '<span class="z">Z</span>',
+    add: add.join(' and '),
+  };
+}
+
+// Would the best decoder there is have failed on these same tiles? If so the player had
+// no way to read the answer off the board, and saying "try again" alone is just unfair.
+function decoderAlsoFails() {
+  const syn = D.syndrome(code, S.err);
+  return D.residualStatus(code, S.err, D.lookupDecode(code, syn)) === 'logical';
+}
+
+function logicalFeedback() {
+  const { flip, add } = logicalChain();
+  const head = `The stored qubit took ${flip}. Glitch + fix join into a chain running right across the patch, `
+    + 'and no check can see such a chain — that is why every tile went dark.';
+  if (decoderAlsoFails()) {
+    return `${head} Nothing on the board could have told you: these tiles have a <b>second</b> reading, `
+      + 'and a minimum-weight decoder — the best there is — bets the same way you did and loses this round too. '
+      + `Want the other reading? <b>↺ TRY AGAIN</b> and add ${add} on top of your fix. `
+      + 'Or <b>SHOW ANSWER</b> to see where the glitches really were.';
+  }
+  return `${head} This one was readable, though: a lighter fix exists that leaves the stored qubit alone. `
+    + '<b>↺ TRY AGAIN</b>, then <b>? HINT</b> shows which qubits a minimum-weight decoder flips.';
+}
+
 function check() {
   if (S.phase !== 'hidden' || !bites.open) return;
   if (!D.isZero(syndrome())) { setStatus('Some tiles are still lit — keep going.', 'warn'); return; }
@@ -213,7 +249,7 @@ function check() {
   // Wrong fix: keep the glitch hidden and let the player try again.
   S.phase = 'failed';
   setStatus('✗ Logical error! The tiles are dark, but the stored qubit got flipped.', 'error');
-  bites.feedback('All tiles dark, yet wrong: your fix and the glitch together stretch from one edge of the patch to the opposite one. Try again — or show the answer.');
+  bites.feedback(logicalFeedback());
   updateUI();
 }
 
@@ -374,7 +410,7 @@ function draw(t) {
 
     const fix = P.get(S.corr, q);
     if (fix !== 'I') badge(x, y, fix);
-    else text(ctx, '?', x, y + 1, { font: 'bold 15px Courier New', color: '#335566' });
+    else text(ctx, '?', x, y + 1, { font: 'bold 15px Courier New', color: '#6f93ad' });
     if (showHint && P.get(hintCorr, q) !== 'I') badge(x + 20, y - 20, P.get(hintCorr, q), { dashed: true });
     if (errHere) text(ctx, '⚡' + P.get(S.err, q), x, y + QR + 16, { font: 'bold 14px Courier New', color: '#ff4455' });
   }
