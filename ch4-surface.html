@@ -77,7 +77,12 @@ const tilePath = s => QEC.ui.surface.tilePath(ctx, code, s, G);
 const qubitAt = (r, c) => r * d + c;
 
 // ── Levels ─────────────────────────────────────────────────────────────────
-const single = types => () => P.on(N, [rng.int(N)], rng.pick(types));
+// Both the spot and the error type come from shuffle bags: over four rounds the
+// player should meet X, Z and Y, not the same glitch twice in a row by chance.
+const single = types => {
+  const bagQ = rng.bagInt(N), bagT = rng.bag(types);
+  return () => P.on(N, [bagQ()], bagT());
+};
 // Level 3: glitch on one of the two qubits under a weight-2 X-check (top edge, then bottom edge).
 const TWINS = [[qubitAt(0, 1), qubitAt(0, 2)], [qubitAt(2, 0), qubitAt(2, 1)]];
 
@@ -118,11 +123,14 @@ const LEVELS = [
   },
   {
     name: 'OVERLOAD', goal: 3, countAll: true, tools: ['X', 'Z', 'Y'],
-    errors: () => {
-      const [a, b] = rng.sample(N, 2);
-      const e = P.on(N, [a], rng.pick(['X', 'Z', 'Y']));
-      return P.applyAt(e, b, rng.pick(['X', 'Z', 'Y']));
-    },
+    errors: (() => {
+      const bagA = rng.bag(['X', 'Z', 'Y']), bagB = rng.bag(['X', 'Z', 'Y']);
+      return () => {
+        const [a, b] = rng.sample(N, 2);
+        const e = P.on(N, [a], bagA());
+        return P.applyAt(e, b, bagB());
+      };
+    })(),
     bites: [
       'Final level: <b>two</b> glitches per round.',
       'A distance-3 patch only <em>promises</em> to fix one. Sometimes the best first guess is wrong, no matter how clever you are. Play 3 rounds and see.',

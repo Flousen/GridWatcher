@@ -9,6 +9,7 @@ window.TEST_MANIFEST = {
     'js/core/hamming.js',
   ],
   tests: [
+    'tests/rng.test.js',
     'tests/pauli.test.js',
     'tests/codes.test.js',
     'tests/sim.test.js',
