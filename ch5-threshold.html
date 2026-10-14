@@ -55,7 +55,7 @@ details.table td, details.table th { padding: 3px 8px; text-align: right; border
 <main class="stage">
   <section class="board">
     <div class="lab">
-      <div class="panel">
+      <div class="panel" id="panel-shot">
         <div class="panel-title">// ONE SHOT //</div>
         <canvas id="cv" width="300" height="300"></canvas>
         <div class="row">
@@ -75,7 +75,7 @@ details.table td, details.table th { padding: 3px 8px; text-align: right; border
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="panel-chart">
         <div class="panel-title">// THOUSANDS OF SHOTS //</div>
         <div class="legend-row" id="legend"></div>
         <div id="chart-wrap">
@@ -127,29 +127,33 @@ const SHOTS = 1500;
 // ── Levels ─────────────────────────────────────────────────────────────────
 const LEVELS = [
   {
-    name: 'ONE SHOT',
+    name: 'ONE SHOT', panel: 'shot',
     bites: [
-      'Real chips glitch at random. Our model: every qubit independently gets an <span class="x">X</span> flip with probability <b>p</b>.',
+      'Chapters 1–4 built the machinery. This one asks the question that decides whether any of it <b>pays off</b>: if a patch keeps failing, does making it <b>bigger</b> fix that? More qubits mean more room to spot errors — but also more qubits that can glitch. Three levels to find out which side wins.',
+      'First, a single patch under random noise. Our model: every qubit independently gets an <span class="x">X</span> flip with probability <b>p</b>.',
       { t: 'Roll a shot. Glitches (red) light the checks, and a <b>decoder</b> — a program doing what you did in Chapter 4 — applies its fix (cyan rings).', wait: 'shot', hint: 'press 🎲 ROLL' },
       { t: 'At small p the decoder almost always wins. Turn p up and roll until it gets <b>fooled</b>.', wait: 'fail', hint: 'raise p, roll until FOOLED' },
       'Too many glitches: the decoder\'s best guess completes an edge-to-edge chain (yellow) — a logical error. Nobody could have done better with that syndrome.',
+      'So a patch does not break on one glitch; it breaks when glitches gang up. Whether a bigger patch makes that more or less likely, single rolls can\'t tell you — dice are too noisy. Next: thousands of them.',
     ],
   },
   {
-    name: 'SWEEP',
+    name: 'SWEEP', panel: 'chart',
     bites: [
-      'One shot is luck. To compare codes we roll <b>thousands</b> per setting and count how often the decoder is fooled: the <b>logical error rate</b>.',
+      'One shot is luck. To compare codes we roll <b>thousands</b> per setting and count how often the decoder is fooled: the <b>logical error rate</b>. That is the number a chip designer actually cares about.',
       { t: 'Run the sweep: patches of distance 3, 5 and 7, glitch rates from 1% to 20%.', wait: 'sweep', hint: 'press ▶ RUN SWEEP' },
       'The dashed diagonal is a single unprotected qubit. Below it, encoding helps.',
       'Now compare the curves. At <b>low p</b>, bigger patches are <em>much</em> better. At <b>high p</b>, bigger patches are <em>worse</em>!',
+      'There is the answer to the chapter\'s question, and it is a <b>conditional yes</b>: more qubits help — but only if your hardware is already good enough. Otherwise they hurt. The curves even tell you where the line sits.',
     ],
   },
   {
-    name: 'THRESHOLD',
+    name: 'THRESHOLD', panel: 'chart',
     bites: [
-      'The curves cross at the <b>threshold</b>. Below it, every extra ring of qubits suppresses errors further. Above it, more qubits just means more things to go wrong.',
+      'That line is where the curves cross, and it has a name: the <b>threshold</b>. Below it, every extra ring of qubits suppresses errors further. Above it, more qubits just means more things to go wrong.',
       { t: 'Slide the yellow marker to where the curves cross, then LOCK IN.', wait: 'guess', hint: 'set the marker, press LOCK IN', onShow: () => { $('guess-row').style.display = 'flex'; drawChart(); } },
-      'In this simplified model (perfect checks) the threshold is about <b>10%</b>. With realistic, noisy checks it drops to about <b>1%</b> — and the best chips today sit just below it. That is why this one number matters so much.',
+      'In this simplified model (perfect checks) the threshold is about <b>10%</b>. With realistic, noisy checks it drops to about <b>1%</b> — and the best chips today sit just below it.',
+      'That is why you hear one number quoted about every new chip. Above threshold, building bigger is wasted silicon. Below it, error rates fall off a cliff as you scale — which is the entire bet the field is making.',
     ],
   },
 ];
@@ -160,6 +164,11 @@ const data = {};   // data[d][i] = logical error rate at P_GRID[i]
 
 function startLevel(i) {
   lvIdx = i;
+  // One panel per level: the chart meant nothing yet during ONE SHOT and only drew the eye
+  // away from the patch the level is actually about.
+  const panel = LEVELS[i].panel;
+  $('panel-shot').style.display = panel === 'shot' ? '' : 'none';
+  $('panel-chart').style.display = panel === 'chart' ? '' : 'none';
   $('guess-row').style.display = 'none';
   if (i === 2 && !haveData()) sweep();
   bites.play(LEVELS[i].bites, () => levelDone(i));
