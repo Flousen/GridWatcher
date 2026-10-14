@@ -159,4 +159,24 @@ suite('surface code d=3 lookup decoder', () => {
     }
     assert.ok(failures > 0);
   });
+
+  // Chapter 4 tells a player who hit a logical error to add a column of X (or a row of Z)
+  // on top of their fix. That advice has to actually land on the other valid correction.
+  test('adding the logical operator repairs any logical error', () => {
+    const types = ['X', 'Y', 'Z'];
+    let checked = 0;
+    for (let a = 0; a < 9; a++) for (let b = a + 1; b < 9; b++)
+      for (const ta of types) for (const tb of types) {
+        const err = P.applyAt(P.on(9, [a], ta), b, tb);
+        const corr = D.lookupDecode(code, D.syndrome(code, err));
+        if (D.residualStatus(code, err, corr) !== 'logical') continue;
+        const r = P.compose(err, corr);
+        let fixed = P.compose(corr, P.identity(9));
+        if (!P.commutes(r, code.logicalZ)) fixed = P.compose(fixed, code.logicalX);
+        if (!P.commutes(r, code.logicalX)) fixed = P.compose(fixed, code.logicalZ);
+        assert.equal(D.residualStatus(code, err, fixed), 'ok', `${ta}${a} ${tb}${b}`);
+        checked++;
+      }
+    assert.ok(checked > 0, 'no logical errors found to repair');
+  });
 });
