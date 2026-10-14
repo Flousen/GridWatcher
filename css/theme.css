@@ -4,9 +4,9 @@
   --bg:       #050510;
   --panel:    rgba(0, 204, 255, 0.03);
   --line:     rgba(0, 204, 255, 0.14);
-  --text:     #c8d4e0;
-  --dim:      #556677;
-  --faint:    #334455;
+  --text:     #d5dfe9;
+  --dim:      #93a7bb;
+  --faint:    #6b7f94;
   --cyan:     #00eeff;
   --cyan-dk:  #0099bb;
   --purple:   #cc44ff;
@@ -108,7 +108,7 @@ canvas {
   border-radius: 5px;
   padding: 5px 12px;
   font-size: 0.76em;
-  color: #4488aa;
+  color: #66aacc;
   letter-spacing: 1px;
 }
 .chip b { color: var(--cyan); }
@@ -150,7 +150,7 @@ button.btn.active { box-shadow: 0 0 14px currentColor; background: rgba(255, 255
   letter-spacing: 1px;
   max-width: 700px;
 }
-.status.info    { color: #00bbdd; }
+.status.info    { color: #22ccee; }
 .status.success { color: var(--green); text-shadow: 0 0 10px #00ff8888; }
 .status.error   { color: var(--red); text-shadow: 0 0 10px #ff000088; }
 .status.warn    { color: var(--amber); }
@@ -162,11 +162,11 @@ button.btn.active { box-shadow: 0 0 14px currentColor; background: rgba(255, 255
   border-radius: 10px;
   padding: 12px 14px;
 }
-.bites-title { color: var(--cyan-dk); font-size: 0.7em; letter-spacing: 3px; margin-bottom: 10px; }
+.bites-title { color: #2ab6d8; font-size: 0.7em; letter-spacing: 3px; margin-bottom: 10px; }
 .bite {
   font-size: 0.86em;
   line-height: 1.6;
-  color: #7a8a9a;
+  color: #8fa1b3;
   padding: 8px 10px;
   border-left: 2px solid transparent;
   margin-bottom: 4px;
