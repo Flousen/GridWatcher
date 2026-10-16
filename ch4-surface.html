@@ -92,8 +92,10 @@ const LEVELS = [
     bites: [
       'Welcome to the <b>surface code</b>. The 9 circles are data qubits that together store <b>one</b> well-protected qubit.',
       'The <span class="z">orange tiles</span> are <b>Z-checks</b>: the same "are you equal?" question as before, asked to 2 or 4 qubits at once. A tile lights up when an <em>odd</em> number of its qubits got an <span class="x">X</span> flip.',
+      'Here is where Chapter 3 stops helping. In a row of qubits each checker had exactly two neighbours, so the lit pattern pinned the glitch down. A tile spanning four qubits only reports <em>odd or even</em> — never <em>which one</em>. A lit tile is not a pointer at a qubit.',
+      'Read it as an <b>end</b> instead: flipped qubits form a chain, and tiles light up where that chain stops. Your fix only has to be a chain with the <em>same ends</em> — the route in between is free. That is why a syndrome often has <b>several</b> right answers.',
       { t: 'Let an <span class="x">X</span> glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
-      { t: 'Find the qubit that touches <em>every</em> lit tile and <em>no</em> dark one. Click it to apply X, then CHECK.', wait: 'solved', hint: 'fix it, then CHECK' },
+      { t: 'Find a qubit that touches <em>every</em> lit tile and <em>no</em> dark one. If two of them fit, either is correct — pick one, then CHECK.', wait: 'solved', hint: 'fix it, then CHECK' },
       'Solve 3 rounds. Stuck? <b>? HINT</b> shows what a decoder would do.',
     ],
   },
@@ -241,7 +243,7 @@ function check() {
       setStatus('✓ Fixed — with a different fix than the glitch! Still perfect.', 'success');
       if (!explainedTwin) {
         explainedTwin = true;
-        bites.feedback('Your fix was not on the glitched qubit, yet it worked. Glitch + fix together form one of the <b>checks</b> (green outline) — and checks never change the stored qubit. Many fixes are equally good: that\'s called <b>degeneracy</b>.');
+        bites.feedback('Your fix was not on the glitched qubit, yet it worked. Look at the <b>green outline</b>: glitch + fix together are exactly the qubits of one <b>check</b>. Flipping every qubit of a check leaves the stored qubit alone — it is the same as doing nothing, so the two fixes differ by nothing at all. That is <b>degeneracy</b>.');
       }
     }
     return endRound();
