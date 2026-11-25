@@ -117,12 +117,49 @@ const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d'), W = cv.width;
 const rng = QEC.makeRng(QEC.randomSeed());
 const bites = new QEC.ui.Bites($('bites'));
+bites.logAs = 'ch5';   // storage id of this chapter (see index.html)
 
 const DISTANCES = [3, 5, 7];
 const SERIES = { 3: 'var(--series-1)', 5: 'var(--series-2)', 7: 'var(--series-3)' };
 const CODES = Object.fromEntries(DISTANCES.map(d => [d, QEC.codes.rotatedSurfaceCode(d)]));
 const P_GRID = Array.from({ length: 20 }, (_, i) => (i + 1) / 100);   // 1% … 20%
 const SHOTS = 1500;
+
+// ── Bets and advice: judged against the sweep the player actually ran ─────────
+const BETS = ['d=3 (9 qubits)', 'd=5 (25 qubits)', 'd=7 (49 qubits)', 'All about the same'];
+const ADVICE = ['d=3', 'd=5', 'd=7', 'No code: one bare qubit'];
+const bets = { low: null, high: null };
+const at = p => P_GRID.findIndex(g => Math.abs(g - p) < 1e-9);
+
+// Option indices (into ADVICE, bare qubit = 3) with the lowest measured rate at p.
+function bestAt(p) {
+  const i = at(p), rates = [...DISTANCES.map(d => data[d][i]), p];
+  const min = Math.min(...rates);
+  return rates.map((r, k) => (r === min ? k : -1)).filter(k => k >= 0);
+}
+const rateList = (p, bare) => {
+  const i = at(p);
+  return DISTANCES.map(d => `d=${d} ${fmtPct(data[d][i])}`).join(', ') + (bare ? `, bare ${fmtPct(p)}` : '');
+};
+
+function betVerdict() {
+  if (!haveData()) return 'Run the sweep first.';
+  const line = (p, bet) => {
+    const best = bestAt(p).filter(k => k < 3), name = best.map(k => `d=${DISTANCES[k]}`).join(' and ');
+    const said = bet === null ? '' : best.includes(bet) ? ' Your bet was right.' : ` You bet ${BETS[bet].split(' (')[0].toLowerCase()}.`;
+    return `At <b>${Math.round(p * 100)}%</b>, ${name} failed least (${rateList(p)}).${said}`;
+  };
+  return line(0.03, bets.low) + '<br>' + line(0.18, bets.high);
+}
+
+function advice(p, ok) {
+  const best = bestAt(p);
+  const why = best.includes(3)
+    ? 'Above threshold every code here does <em>worse</em> than no code at all: each extra qubit is one more that can glitch.'
+    : 'Below threshold the biggest patch wins, by a lot.';
+  const names = best.map(k => ADVICE[k].split(':')[0].toLowerCase()).join(' or ');
+  return `${ok ? '✓ Right.' : `✗ Not quite: best is <b>${names}</b>.`} Your sweep says: ${rateList(p, true)}. ${why}`;
+}
 
 // ── Levels ─────────────────────────────────────────────────────────────────
 const LEVELS = [
@@ -141,10 +178,14 @@ const LEVELS = [
     name: 'SWEEP', panel: 'chart',
     bites: [
       'One shot is luck. To compare codes we roll <b>thousands</b> per setting and count how often the decoder is fooled: the <b>logical error rate</b>. That is the number a chip designer actually cares about.',
+      { t: 'Before you run it, place two bets. At a <b>low</b> glitch rate, p = 3%, which patch fails least often?',
+        ask: BETS, answer: 2, kind: 'predict', id: 'bet-low', onAnswer: i => (bets.low = i) },
+      { t: 'And at a <b>high</b> glitch rate, p = 18%?',
+        ask: BETS, answer: 0, kind: 'predict', id: 'bet-high', onAnswer: i => (bets.high = i) },
       { t: 'Run the sweep: patches of distance 3, 5 and 7, glitch rates from 1% to 20%.', wait: 'sweep', hint: 'press ▶ RUN SWEEP' },
-      'The dashed diagonal is a single unprotected qubit. Below it, encoding helps.',
-      'Now compare the curves. At <b>low p</b>, bigger patches are <em>much</em> better. At <b>high p</b>, bigger patches are <em>worse</em>!',
-      'There is the answer to the chapter\'s question, and it is a <b>conditional yes</b>: more qubits help — but only if your hardware is already good enough. Otherwise they hurt. The curves even tell you where the line sits.',
+      'The dashed line is a single unprotected qubit: it fails exactly at rate p. Below it, encoding helps.',
+      { t: 'Now check your bets against the curves. Hover (or open the data table) for exact numbers.', onShow: () => bites.feedback(betVerdict()) },
+      'There is the answer to the chapter\'s question, and it is a <b>conditional yes</b>: at low p bigger patches are <em>much</em> better, at high p they are <em>worse</em>. More qubits help only if your hardware is already good enough. The curves even tell you where the line sits.',
     ],
   },
   {
@@ -152,6 +193,10 @@ const LEVELS = [
     bites: [
       'That line is where the curves cross, and it has a name: the <b>threshold</b>. Below it, every extra ring of qubits suppresses errors further. Above it, more qubits just means more things to go wrong.',
       { t: 'Slide the yellow marker to where the curves cross, then LOCK IN.', wait: 'guess', hint: 'set the marker, press LOCK IN', onShow: () => { $('guess-row').style.display = 'flex'; drawChart(); } },
+      { t: 'Now put it to use. Lab A\'s qubits glitch at <b>p = 4%</b>. What protects their stored bit best?',
+        ask: ADVICE, answer: i => bestAt(0.04).includes(i), kind: 'check', id: 'advise-4', reply: (i, ok) => advice(0.04, ok) },
+      { t: 'Lab B\'s qubits glitch at <b>p = 15%</b>. What protects their bit best?',
+        ask: ADVICE, answer: i => bestAt(0.15).includes(i), kind: 'check', id: 'advise-15', reply: (i, ok) => advice(0.15, ok) },
       'In this simplified model (perfect checks) the threshold is about <b>10%</b>. With realistic, noisy checks it drops to about <b>1%</b> — and the best chips today sit just below it.',
       'That is why you hear one number quoted about every new chip. Above threshold, building bigger is wasted silicon. Below it, error rates fall off a cliff as you scale — which is the entire bet the field is making.',
     ],
@@ -170,6 +215,8 @@ function startLevel(i) {
   $('panel-shot').style.display = panel === 'shot' ? '' : 'none';
   $('panel-chart').style.display = panel === 'chart' ? '' : 'none';
   $('guess-row').style.display = 'none';
+  // SWEEP starts from an empty chart, so the bets come before any curve is on screen
+  if (i === 1 && !sweeping) { DISTANCES.forEach(d => delete data[d]); $('table').innerHTML = ''; }
   if (i === 2 && !haveData()) sweep();
   bites.play(LEVELS[i].bites, () => levelDone(i));
   updateUI();

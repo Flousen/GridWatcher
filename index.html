@@ -43,6 +43,15 @@ a.card:hover { border-color: var(--cyan); box-shadow: 0 0 18px #00eeff22; }
 .state { font-size: 0.72em; letter-spacing: 2px; color: var(--dim); white-space: nowrap; }
 .card.done .state { color: var(--green); }
 
+.log { max-width: 760px; margin: 18px auto 0; font-size: 0.78em; color: var(--dim); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; }
+.log summary { cursor: pointer; letter-spacing: 2px; color: #2ab6d8; }
+.log p { margin: 8px 0; line-height: 1.6; }
+.log table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+.log td { padding: 3px 6px; border-bottom: 1px solid #1a2a3a; color: var(--text); vertical-align: top; }
+.log td.k { color: var(--faint); white-space: nowrap; }
+.log .ok { color: var(--green); }
+.log .no { color: var(--red); }
+.log button { margin-top: 8px; background: none; border: 1px solid var(--faint); border-radius: 5px; color: var(--dim); font-family: var(--mono); padding: 4px 10px; cursor: pointer; }
 .foot { max-width: 760px; margin: 26px auto 0; font-size: 0.72em; color: var(--faint); text-align: center; line-height: 1.8; }
 .foot button { background: none; border: none; color: var(--dim); font-family: var(--mono); font-size: 1em; text-decoration: underline; cursor: pointer; }
 </style>
@@ -60,6 +69,15 @@ a.card:hover { border-color: var(--cyan); box-shadow: 0 0 18px #00eeff22; }
 </div>
 
 <div class="path" id="path"></div>
+
+<details class="log" id="log" hidden>
+  <summary>YOUR LEARNING LOG</summary>
+  <p>Your <b>first</b> answer to each prediction, check question and decision in the chapters.
+     It is stored only in this browser and is never sent anywhere. In a playtest you may copy it and
+     hand it over — only if you want to.</p>
+  <table id="log-table"></table>
+  <button id="log-copy">COPY AS TEXT</button>
+</details>
 
 <div class="foot">
   Chapter 7 will be based on D. Litinski, <em>A Game of Surface Codes</em>, Quantum 3, 128 (2019).<br>
@@ -95,10 +113,33 @@ function render() {
   });
 }
 
+// Learning log: first outcomes of predictions (did you guess right?), checks and in-game decisions.
+const KIND = { predict: 'prediction', check: 'check', task: 'first try' };
+function renderLog() {
+  const rows = [];
+  CHAPTERS.forEach((c, i) => {
+    const log = c.href ? QEC.progress.log(c.id) : {};
+    const keys = Object.keys(log);
+    if (!keys.length) return;
+    const cells = keys.map(k => `<span class="${log[k].ok ? 'ok' : 'no'}">${log[k].ok ? '✓' : '✗'}</span> ${k} <span class="k">(${KIND[log[k].kind] || log[k].kind})</span>`);
+    rows.push(`<tr><td class="k">${i + 1} ${c.title}</td><td>${cells.join('<br>')}</td></tr>`);
+  });
+  document.getElementById('log').hidden = !rows.length;
+  document.getElementById('log-table').innerHTML = rows.join('');
+}
+document.getElementById('log-copy').onclick = e => {
+  const out = {};
+  CHAPTERS.forEach((c, i) => { const l = c.href ? QEC.progress.log(c.id) : {}; if (Object.keys(l).length) out[`${i + 1} ${c.title}`] = l; });
+  const txt = JSON.stringify(out, null, 1);
+  const done = () => { e.target.textContent = 'COPIED'; };
+  try { navigator.clipboard.writeText(txt).then(done, () => prompt('Copy this:', txt)); } catch (err) { prompt('Copy this:', txt); }
+};
+
 document.getElementById('reset').onclick = () => {
-  if (confirm('Forget all progress?')) { QEC.progress.reset(); render(); }
+  if (confirm('Forget all progress?')) { QEC.progress.reset(); render(); renderLog(); }
 };
 render();
+renderLog();
 </script>
 </body>
 </html>

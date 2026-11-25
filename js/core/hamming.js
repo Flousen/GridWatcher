@@ -23,5 +23,12 @@
     return null;
   }
 
-  QEC.hamming = { alarmPattern, findCollision };
+  // Decoding: which nodes would ring exactly these sensors? With a valid wiring (no collision)
+  // every non-empty alarm names exactly one node — that is what the puzzle buys you.
+  function locate(conns, nodeIds, fired) {
+    const key = [...fired].sort((a, b) => a - b).join(',');
+    return nodeIds.filter(id => alarmPattern(conns, id).key === key);
+  }
+
+  QEC.hamming = { alarmPattern, findCollision, locate };
 })(window.QEC = window.QEC || {});

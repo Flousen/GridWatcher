@@ -8,6 +8,14 @@
 //   bites.notify('flip');     // game reports an event; advances if the current bite waits for it
 //   bites.feedback('Nope!');  // short reaction under the current bite, replaced by the next one
 //
+// A bite can also ask a question; the player must pick an answer before going on (and before the
+// game opens up, so a prediction really comes before the outcome):
+//     { t: 'What will Z do to |0⟩?', ask: ['Flip it', 'Nothing'], answer: 1, id: 'z-on-0',
+//       kind: 'predict' | 'check',         // predict: neutral reply, the game shows the truth next
+//       reply: (pick, ok) => 'html' }     // optional; default reply depends on kind
+//   `answer` may be a function pick → bool (e.g. judged against simulated data).
+//   With bites.logAs = 'ch2' the FIRST answer goes to the local learning log (QEC.progress.note).
+//
 // Bite text is HTML written by us (never user input).
 (function (QEC) {
   'use strict';
@@ -23,16 +31,36 @@
       this.fb = null;
       this.actions = null;
       this.onChange = null;   // called after every re-render, e.g. to enable/disable game buttons
+      this.logAs = null;      // chapter id for the learning log, see ask bites above
     }
 
     play(list, onEnd) {
-      this.list = list.map(b => (typeof b === 'string' ? { t: b } : b));
+      // copies, so an answered question is fresh again when the level is replayed
+      this.list = list.map(b => (typeof b === 'string' ? { t: b } : { ...b }));
       this.i = 0;
       this.onEnd = onEnd || null;
       this.fb = null;
       this.actions = null;
       this.render();
       this.fireShow();
+    }
+
+    // The player picked option i of the current question.
+    answer(i) {
+      const cur = this.list[this.i];
+      if (!cur || !cur.ask || cur.picked !== undefined) return;
+      const ok = typeof cur.answer === 'function' ? !!cur.answer(i) : i === cur.answer;
+      const kind = cur.kind || 'check';
+      cur.picked = i;
+      const mark = kind === 'predict' ? 'pick' : ok ? 'pick right' : 'pick wrong';
+      cur.t += `<div class="ask-${mark}">▸ ${cur.ask[i]}</div>`;
+      if (this.logAs && QEC.progress && cur.id) QEC.progress.note(this.logAs, cur.id, { kind, ok });
+      const right = typeof cur.answer === 'number' ? cur.ask[cur.answer] : null;
+      this.fb = cur.reply ? cur.reply(i, ok)
+        : kind === 'predict' ? 'Noted. Let\'s find out.'
+        : ok ? '✓ Right.' : `✗ Not quite${right ? ` — it is <b>${right}</b>` : ''}.`;
+      if (cur.onAnswer) cur.onAnswer(i, ok);
+      this.render();
     }
 
     // True while the player may play: a bite waits for an action, or all bites have been read.
@@ -112,7 +140,16 @@
       const el = this.el;
       const row = document.createElement('div');
       row.className = 'bite-actions';
-      if (cur.final && this.actions) {
+      if (cur.ask && cur.picked === undefined) {
+        row.classList.add('ask');
+        cur.ask.forEach((label, i) => {
+          const btn = document.createElement('button');
+          btn.className = 'btn ask-opt';
+          btn.innerHTML = label;
+          btn.onclick = () => this.answer(i);
+          row.appendChild(btn);
+        });
+      } else if (cur.final && this.actions) {
         for (const a of this.actions) {
           const btn = document.createElement('button');
           btn.className = 'btn ' + (a.cls || 'next');

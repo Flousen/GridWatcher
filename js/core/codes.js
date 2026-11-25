@@ -68,5 +68,11 @@
     });
   }
 
-  QEC.codes = { repetitionCode, rotatedSurfaceCode };
+  // How many errors is a code of distance d SURE to undo, with a fewest-flips decoder? ⌊(d−1)/2⌋.
+  // More than that can always pass for a lighter error, and then the fix completes a logical error.
+  const correctable = d => Math.floor((d - 1) / 2);
+  // The smallest distance that is sure to undo k errors.
+  const distanceFor = k => 2 * k + 1;
+
+  QEC.codes = { repetitionCode, rotatedSurfaceCode, correctable, distanceFor };
 })(window.QEC = window.QEC || {});

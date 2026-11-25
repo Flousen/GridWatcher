@@ -8,15 +8,17 @@ Learn quantum error correction by playing. Six short browser chapters, one idea 
 
 | # | Chapter | The one idea | You play… |
 |---|---------|--------------|-----------|
-| 1 | Glitch Puzzle | A *syndrome* pinpoints an error without reading the data | Wire sensors so every node has a unique alarm pattern (Hamming codes) |
-| 2 | Two Kinds of Glitch | Qubits suffer bit flips (X), phase flips (Z) and both (Y) — and can't be peeked at | Undo glitches on a qubit arrow; measure and watch it collapse |
-| 3 | Ask, Don't Look | Parity checks locate errors; a code's *distance* limits how many | Fix hidden errors in the repetition code using only the checkers |
-| 4 | Chains | On a grid, errors form chains and checks only see their ends; a decoder bets on the shortest chain | Decode X glitches on the Z-checks of a distance-5 surface code |
-| 5 | Surface Code | X- and Z-checks on a grid; degeneracy; logical errors | Decode a distance-3 surface code by hand (left click = X, right click = Z, both = Y) |
-| 6 | Threshold Lab | Below the threshold, bigger codes win; above it, they lose | Run Monte Carlo sweeps for d = 3, 5, 7 and find the crossing |
+| 1 | Glitch Puzzle | A *syndrome* pinpoints an error without reading the data | Wire sensors so every node has a unique alarm pattern (Hamming codes), then use your wiring to locate glitches from the alarm alone |
+| 2 | Two Kinds of Glitch | Qubits suffer bit flips (X), phase flips (Z) and both (Y) — and can't be peeked at | Predict what Z does to \|0⟩; undo glitches on a qubit arrow, where only one-move fixes count; measure, then try (and fail) to undo the collapse |
+| 3 | Ask, Don't Look | Parity checks locate errors; a code's *distance* limits how many | Fix hidden errors in the repetition code using only the checkers; then pick the smallest code that survives a burst of 1–3 glitches |
+| 4 | Chains | On a grid, errors form chains and checks only see their ends; a decoder bets on the shortest chain | Decode X glitches on the Z-checks of a distance-5 surface code; predict, then fix a chain by the *other* route and see the loop |
+| 5 | Surface Code | X- and Z-checks on a grid; degeneracy; logical errors | Decode a distance-3 surface code by hand (left click = X, right click = Z, both = Y); with two glitches, score against a minimum-weight decoder |
+| 6 | Threshold Lab | Below the threshold, bigger codes win; above it, they lose | Bet which distance wins at low and high p, run Monte Carlo sweeps for d = 3, 5, 7, find the crossing, and advise two labs |
 | 7 | *Game of Surface Codes* | Lattice surgery with patches as tiles (Litinski 2019) | coming next |
 
 Progress is stored in the browser (`localStorage`); if storage is blocked the game simply forgets.
+
+**Learning log.** Predictions, short check questions and in-game decisions record the player's *first* answer (right or wrong) in the same browser storage. The map shows it under *Your learning log*, with a button to copy it as text — useful as embedded assessment in playtests. Nothing is ever sent anywhere; sharing it is the player's choice.
 
 ## Run it
 
@@ -33,7 +35,7 @@ The physics and puzzle logic lives in `js/core/` and is tested independently fro
 - **Browser:** open `tests.html` — green means everything passes.
 - **Terminal:** `scripts/run-tests.sh` (needs `gjs`, GNOME's JavaScript shell, preinstalled on most Linux desktops).
 
-What's covered: Pauli algebra; Hamming puzzle checks; the repetition code; rotated surface codes for d = 3, 5, 7 (check counts and weights, commutation, logical operators, every single error detected, degeneracy, logical errors); decoders (lookup table, greedy and exact minimum-weight matching — including "corrects every error on ≤ (d−1)/2 qubits" checked exhaustively); the Chapter 4 puzzles (lit tiles and shortest fix of every pattern); and the threshold simulation (bigger codes win at low noise and lose at high noise).
+What's covered: Pauli algebra; Hamming puzzle checks; the repetition code; rotated surface codes for d = 3, 5, 7 (check counts and weights, commutation, logical operators, every single error detected, degeneracy, logical errors); decoders (lookup table, greedy and exact minimum-weight matching — including "corrects every error on ≤ (d−1)/2 qubits" checked exhaustively); the repetition code's distance limit behind Chapter 3's PICK A SIZE (every error on ≤ ⌊(n−1)/2⌋ qubits fixed, every heavier one a logical error); locating a glitch from a Hamming wiring; the Chapter 4 puzzles (lit tiles and shortest fix of every pattern); and the threshold simulation (bigger codes win at low noise and lose at high noise).
 
 `scripts/shot.sh` and `scripts/shot-play.sh` take headless-Firefox screenshots of a page (optionally after running some JS in it) for visual checks.
 

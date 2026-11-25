@@ -88,7 +88,7 @@ h1 {
   .stage { flex-direction: column; }
   .bites { flex: none; width: 100%; order: -1; }   /* read first, then play right below */
   /* small screens: only the current bite and the one right before it */
-  .bite:not(.current):not(:has(+ .bite.current)) { display: none; }
+  .bite:not(.current):not(:has(+ .bite.current)):not(:nth-last-child(2)) { display: none; }   /* …and the last one read */
 }
 
 canvas {
@@ -184,6 +184,22 @@ button.btn.active { box-shadow: 0 0 14px currentColor; background: rgba(255, 255
 .bite .y { color: var(--y-col); font-weight: bold; }
 .bite-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .bite-wait { color: var(--amber); font-size: 0.78em; letter-spacing: 1px; }
+/* Question bites: one full-width button per answer, then the pick stays visible in the bite */
+.bite-actions.ask { flex-direction: column; align-items: stretch; gap: 6px; }
+button.btn.ask-opt {
+  text-transform: none;
+  letter-spacing: 0.5px;
+  font-weight: normal;
+  text-align: left;
+  white-space: normal;
+  line-height: 1.4;
+  color: #c8d4e0;
+  border-color: #3d5266;
+}
+button.btn.ask-opt:hover { border-color: var(--cyan-dk); }
+.ask-pick { margin-top: 6px; color: var(--amber); }
+.ask-pick.right { color: var(--green); }
+.ask-pick.wrong { color: var(--red); }
 /* Feedback flashes on the board (QEC.ui.fx in js/ui/canvas.js) */
 @keyframes fxGood {
   0%   { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }

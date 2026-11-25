@@ -21,7 +21,7 @@
 <main class="stage">
   <section class="board">
     <div class="hud">
-      <div class="chip">FIXED <b id="h-fixed">0/0</b></div>
+      <div class="chip"><span id="h-fixed-lbl">FIXED</span> <b id="h-fixed">0/0</b></div>
       <div class="chip">MOVES <b id="h-moves">0</b></div>
     </div>
     <canvas id="cv" width="480" height="480"></canvas>
@@ -55,6 +55,7 @@ const cv = $('cv'), ctx = cv.getContext('2d');
 const W = cv.width, CX = W / 2, CY = W / 2, R = 170;
 const rng = QEC.makeRng(QEC.randomSeed());
 const bites = new QEC.ui.Bites($('bites'));
+bites.logAs = 'ch2';
 
 // ── Qubit as an arrow in the X–Z plane of the Bloch sphere ─────────────────
 // (x, z): z = +1 is |0⟩ (up), z = −1 is |1⟩ (down), x = ±1 is |±⟩.
@@ -83,9 +84,11 @@ const LEVELS = [
     name: 'PHASE FLIP', goal: 3, targets: [90, 270], errors: ['Z'],
     bites: [
       'Qubits have a second way to break — one classical bits don\'t have.',
-      { t: 'Here is <b>|0⟩</b>. Apply <span class="z">Z</span>, the <b>phase flip</b>, and watch closely.', wait: 'gateZ', hint: 'press Z',
+      { t: 'Here is <b>|0⟩</b>. The <span class="z">Z</span> gate, the <b>phase flip</b>, mirrors the arrow left↔right. What will it do to this arrow?',
+        ask: ['Flip it down to |1⟩', 'Tip it over to |+⟩', 'Nothing you can see'], answer: 2, kind: 'predict', id: 'z-on-0',
         onShow: () => setupDemo(0) },
-      'Nothing moved! <span class="z">Z</span> mirrors left↔right, and an arrow pointing straight up is its own mirror image. Phase flips only show on superpositions.',
+      { t: 'Find out: apply <span class="z">Z</span> and watch closely.', wait: 'gateZ', hint: 'press Z' },
+      'Nothing moved! An arrow pointing straight up is its own mirror image left↔right. Phase flips only show on superpositions.',
       { t: 'So start at <b>|+⟩</b>, halfway between 0 and 1. Let it glitch.', wait: 'glitch', hint: 'press ⚡ GLITCH',
         onShow: () => newRound() },
       { t: 'It jumped to the other side (|+⟩ ↔ |−⟩): same 50/50 mix of 0 and 1, opposite <em>phase</em>. Undo it.', wait: 'fixed', hint: 'apply the right gate' },
@@ -93,21 +96,31 @@ const LEVELS = [
     ],
   },
   {
-    name: 'MYSTERY', goal: 5, targets: [30, 60, 120, 150, 210, 240, 300, 330], errors: ['X', 'Z', 'Y'],
+    name: 'MYSTERY', goal: 4, clean: true, targets: [30, 60, 120, 150, 210, 240, 300, 330], errors: ['X', 'Z', 'Y'],
     bites: [
       'Now the arrow sits at an odd angle and the glitch can be anything: <span class="x">X</span>, <span class="z">Z</span>, or <span class="y">Y</span> — which is X and Z at once.',
       'Compare the red arrow with the dashed one. Flipped top↔bottom? Left↔right? Both?',
-      'Every error is one of these three (or a mix you can build from them). Fix 5 glitches. Bonus points for doing it in one move.',
+      'Every error is one of these three (or a mix you can build from them). Here only <b>clean fixes</b> count: the right gate on the first try. Read the arrow, then press. Fix 4 cleanly.',
     ],
   },
   {
     name: 'NO PEEKING', goal: 0, targets: [60], errors: [],
     bites: [
-      'Confession: you were cheating. A real quantum computer <b>can\'t see the arrow</b>.',
-      { t: 'The only way to look is to <b>measure</b>. Try it.', wait: 'measure', hint: 'press MEASURE', onShow: () => setupMeasure() },
-      'You get a single answer, 0 or 1, and the arrow <b>snaps</b> to it. The original angle is gone for good.',
+      'Confession: you were cheating. A real quantum computer <b>can\'t see the arrow</b>. The only way to look is to <b>measure</b>.',
+      { t: 'This arrow is mostly |0⟩, a bit of |1⟩. If you measure it, you get…', ask: ['…its angle', '…always 0', '…0 or 1, at random'],
+        answer: 2, kind: 'predict', id: 'measure-60', onShow: () => setupMeasure(60) },
+      { t: 'Measure it.', wait: 'measure', hint: 'press MEASURE' },
+      'A single answer, 0 or 1 — and the arrow <b>snapped</b> to it.',
+      { t: 'Can you get the dashed arrow back? You still have <span class="x">X</span>, <span class="z">Z</span> and <span class="y">Y</span>. Try.', wait: 'restore', hint: 'try 3 gates' },
+      'No gate brings it back: they only mirror, and a mirrored |0⟩ or |1⟩ is still |0⟩ or |1⟩. The angle — the stored information — is <b>gone</b>. Measuring didn\'t just look; it destroyed the data.',
       { t: 'Prepare and measure a few more times. Same arrow, random answers.', wait: 'measure3', hint: 'measure 3 more times' },
-      'So we can\'t peek to find errors — peeking destroys the data. The way out: ask questions that reveal the <em>error</em> but not the <em>data</em>. That\'s Chapter 3.',
+      { t: 'Now an arrow pointing straight <b>down</b>, at |1⟩. You measure it. What happens?',
+        ask: ['You get 1, and the arrow stays put', '0 or 1 at random, and it snaps', 'It tips over sideways'], answer: 0, kind: 'check', id: 'measure-1',
+        onShow: () => setupMeasure(180),
+        reply: (i, ok) => (ok ? '✓ Right.' : '✗ Not quite: you get <b>1, and the arrow stays put</b>.')
+          + ' An arrow that already points at an answer has nothing to lose. Measuring destroys only the <em>in-between</em>.' },
+      { t: 'See for yourself.', wait: 'measure', hint: 'press MEASURE' },
+      'So we can\'t peek to find errors — peeking destroys the data. The way out: ask questions that reveal the <em>error</em> but not the <em>data</em>, questions whose answer is already certain. That\'s Chapter 3.',
     ],
   },
 ];
@@ -125,7 +138,7 @@ function startLevel(i) {
   // menu (X, Z and Y) instead of handing out the same glitch three times.
   bagTarget = rng.bag(lv.targets);
   bagError  = lv.errors.length ? rng.bag(lv.errors) : null;
-  S = { lv, idx: i, phase: 'ready', target: null, v: null, fixed: 0, moves: 0, perfect: 0, demo: false, measure: false };
+  S = { lv, idx: i, phase: 'ready', target: null, v: null, fixed: 0, moves: 0, perfect: 0, glitches: 0, restoreTries: 0, demo: false, measure: false };
   measureCount = 0;
   newRound();
   bites.play(lv.bites, () => { if (lv.goal === 0 || S.goalReached) levelDone(); else updateUI(); });
@@ -148,15 +161,15 @@ function setupDemo(deg) {
   S.v = { ...S.target };
   S.phase = 'broken';
   S.demo = true;
-  setStatus('Apply Z to |0⟩.', 'info');
+  setStatus('This is |0⟩.', 'info');
   updateUI();
 }
 
-function setupMeasure() {
-  S.target = fromAngle(60);
+function setupMeasure(deg) {
+  S.target = fromAngle(deg);
   S.v = { ...S.target };
   S.phase = 'measure';
-  setStatus('This arrow is mostly |0⟩, a bit of |1⟩.', 'info');
+  setStatus(deg === 180 ? 'This arrow points straight at |1⟩.' : 'This arrow is mostly |0⟩, a bit of |1⟩.', 'info');
   updateUI();
 }
 
@@ -167,6 +180,7 @@ bites.onChange = () => { if (S) updateUI(); };
 function glitch() {
   if (S.phase !== 'ready' || !canAct() || !bagError) return;
   const e = bagError();
+  S.glitches++;
   move(GATES[e](S.v), null);
   S.phase = 'broken';
   flash = performance.now();
@@ -176,6 +190,7 @@ function glitch() {
 }
 
 function applyGate(g) {
+  if (S.phase === 'measured' && bites.waiting === 'restore' && !anim) return tryRestore(g);
   if (S.phase !== 'broken' || !canAct() || anim) return;
   move(GATES[g](S.v), g);
   if (S.demo) {
@@ -185,36 +200,53 @@ function applyGate(g) {
   S.moves++;
   if (same(S.v, S.target)) {
     S.phase = 'fixed';
-    S.fixed++;
-    if (S.moves === 1) S.perfect++;
-    setStatus(S.moves === 1 ? '✓ Fixed in one move!' : `✓ Fixed (${S.moves} moves).`, 'success');
-    QEC.ui.fx.good(cv);
+    const clean = S.moves === 1;
+    if (clean) S.perfect++;
+    if (S.lv.clean) QEC.progress.note('ch2', 'mystery-first-fix', { kind: 'task', ok: clean });
+    // In MYSTERY only a clean fix counts: pressing X, Z, Y until it fits must not win the level.
+    if (clean || !S.lv.clean) S.fixed++;
+    setStatus(clean ? '✓ Fixed in one move!'
+      : S.lv.clean ? `Fixed in ${S.moves} moves — doesn't count. Before you press: flipped ↕, ↔ or both?`
+      : `✓ Fixed (${S.moves} moves).`, clean || !S.lv.clean ? 'success' : 'warn');
+    if (clean || !S.lv.clean) QEC.ui.fx.good(cv); else QEC.ui.fx.nudge(cv);
     bites.notify('fixed');
     updateUI();
     if (S.fixed >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 700); }
     else setTimeout(() => { if (S.phase === 'fixed') newRound(); }, 1100);
   } else {
-    setStatus('Not there yet — compare with the dashed arrow.', 'warn');
+    setStatus(S.lv.clean && S.moves === 1 ? 'Not that one — this round won\'t count, but finish the fix.' : 'Not there yet — compare with the dashed arrow.', 'warn');
     QEC.ui.fx.nudge(cv);
     updateUI();
   }
 }
 
+// After a measurement: gates can only mirror |0⟩/|1⟩ onto |0⟩/|1⟩, so the angle never comes back.
+function tryRestore(g) {
+  move(GATES[g](S.v), g);
+  S.restoreTries++;
+  setStatus(`${g} applied: still |${S.v.z > 0 ? 0 : 1}⟩, not the dashed arrow.`, 'warn');
+  QEC.ui.fx.nudge(cv);
+  if (S.restoreTries >= 3) bites.notify('restore');
+  updateUI();
+}
+
 function measure() {
-  if (S.phase !== 'measure' || anim) return;
+  if (S.phase !== 'measure' || anim || !canAct()) return;
   const p0 = (1 + S.v.z) / 2;               // Born rule: P(0) = cos²(θ/2)
   const got = rng() < p0 ? 0 : 1;
   move({ x: 0, z: got ? -1 : 1 }, null);
   S.phase = 'measured';
   measureCount++;
-  setStatus(`Measured: ${got}. (P(0) was ${Math.round(p0 * 100)}%.) The arrow snapped to |${got}⟩.`, got ? 'warn' : 'info');
+  const sure = p0 < 1e-9 || p0 > 1 - 1e-9;
+  setStatus(sure ? `Measured: ${got}, with certainty. The arrow was already at |${got}⟩ and stays put.`
+    : `Measured: ${got}. (P(0) was ${Math.round(p0 * 100)}%.) The arrow snapped to |${got}⟩.`, got ? 'warn' : 'info');
   bites.notify('measure');
   if (measureCount >= 4) bites.notify('measure3');
   updateUI();
 }
 
 function prepare() {
-  if (S.phase !== 'measured') return;
+  if (S.phase !== 'measured' || bites.waiting === 'restore' || !canAct()) return;
   S.v = { ...S.target };
   S.phase = 'measure';
   setStatus('Prepared the same arrow again.', 'info');
@@ -224,7 +256,7 @@ function prepare() {
 function levelDone() {
   chapter.complete(S.idx);
   const last = chapter.isLast(S.idx);
-  const bonus = S.lv.goal >= 5 ? ` ${S.perfect}/${S.fixed} in one move.` : '';
+  const bonus = S.lv.clean ? ` ${S.perfect} of ${S.glitches} glitches fixed in one move.` : '';
   bites.finish(last
     ? '✓ <b>Chapter complete.</b> Qubits suffer bit flips (X), phase flips (Z) and both (Y) — and we may not look. Next: catching errors blindfolded.'
     : `✓ <b>Level complete.</b>${bonus}`,
@@ -247,19 +279,21 @@ function setStatus(msg, cls) { $('status').textContent = msg; $('status').classN
 function updateUI() {
   const lv = S.lv;
   const meas = lv.goal === 0;
+  $('h-fixed-lbl').textContent = lv.clean ? 'CLEAN FIXES' : 'FIXED';
   $('h-fixed').textContent = meas ? '–' : `${S.fixed}/${lv.goal}`;
   $('h-moves').textContent = S.moves;
   $('btn-glitch').style.display = meas ? 'none' : '';
   const act = canAct();
   $('btn-glitch').disabled = S.phase !== 'ready' || !act;
+  const restoring = meas && bites.waiting === 'restore';
   document.querySelectorAll('[data-gate]').forEach(b => {
-    b.style.display = meas ? 'none' : '';
-    b.disabled = S.phase !== 'broken' || !act;
+    b.style.display = meas && !restoring ? 'none' : '';
+    b.disabled = restoring ? S.phase !== 'measured' : S.phase !== 'broken' || !act;
   });
   $('btn-measure').style.display = meas ? '' : 'none';
   $('btn-prepare').style.display = meas ? '' : 'none';
-  $('btn-measure').disabled = S.phase !== 'measure';
-  $('btn-prepare').disabled = S.phase !== 'measured';
+  $('btn-measure').disabled = S.phase !== 'measure' || restoring || !act;
+  $('btn-prepare').disabled = S.phase !== 'measured' || restoring || !act;
 }
 
 $('btn-glitch').onclick = glitch;
@@ -341,6 +375,7 @@ function draw(t) {
   }
 
   if (S.target && S.phase !== 'measure' && S.phase !== 'measured') arrow(S.target, '#00ff88', { dashed: true, width: 2, glowAmt: 6 });
+  else if (S.phase === 'measured' && bites.waiting === 'restore') arrow(S.target, '#00ff88', { dashed: true, width: 2, glowAmt: 6 });
   else if (S.phase === 'measured') arrow(S.target, '#556677', { dashed: true, width: 2, glowAmt: 0 });
   const broken = S.phase === 'broken' && !S.demo;
   const col = broken ? '#ff4455' : S.phase === 'fixed' || S.phase === 'done' ? '#00ff88' : '#00eeff';

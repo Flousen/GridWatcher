@@ -32,6 +32,11 @@ canvas { cursor: pointer; }
       <button class="btn" id="btn-reveal">SHOW ANSWER</button>
       <button class="btn next" id="btn-round">NEXT ROUND →</button>
     </div>
+    <div class="controls" id="sizes">
+      <button class="btn" data-n="3">3 QUBITS</button>
+      <button class="btn" data-n="5">5 QUBITS</button>
+      <button class="btn" data-n="7">7 QUBITS</button>
+    </div>
     <div class="legend">
       <span><span class="sw" style="background:#ff8822;transform:rotate(45deg) scale(.8)"></span> checker lit: neighbours differ</span>
       <span><b style="color:var(--x-col)">X</b> your correction</span>
@@ -71,7 +76,7 @@ const pairs = n => {
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) out.push([i, j]);
   return out;
 };
-const bagQ3 = rng.bagInt(3), bagQ3z = rng.bagInt(3), bagPair3 = rng.bag(pairs(3)), bagCount = rng.bag([1, 2]);
+const bagQ3 = rng.bagInt(3), bagQ3z = rng.bagInt(3), bagPair3 = rng.bag(pairs(3)), bagCount = rng.bag([1, 2]), bagBurst = rng.bag([1, 2, 3]);
 const LEVELS = [
   {
     name: '3 QUBITS', n: 3, goal: 3,
@@ -102,6 +107,15 @@ const LEVELS = [
     ],
   },
   {
+    // The distance limit as a decision: the player plans the code, the fewest-flips rule decodes.
+    name: 'PICK A SIZE', n: 3, goal: 3, pick: true,
+    errors: (n, k) => xOn(n, rng.sample(n, k)),
+    bites: [
+      'You\'re the engineer now. Each round a burst of <b>1, 2 or 3</b> glitches hits, and you are told how many. Bigger codes cost more qubits.',
+      'So pick the <b>smallest</b> code that is <em>sure</em> to survive the burst. The fewest-flips rule decodes for you this time; your job is the plan. Get 3 rounds right.',
+    ],
+  },
+  {
     name: 'PHASE SNEAK', n: 3, goal: 1, countAll: true,
     errors: (n) => P.on(n, [bagQ3z()], 'Z'),
     bites: [
@@ -118,21 +132,61 @@ const ripples = [];
 
 function startLevel(i) {
   const lv = LEVELS[i];
-  S = { lv, idx: i, code: QEC.codes.repetitionCode(lv.n), solved: 0, played: 0 };
-  W = cv.width = 180 + (lv.n - 1) * (lv.n <= 3 ? 170 : 140);   // fewer qubits → narrower board, bigger on phones
+  S = { lv, idx: i, solved: 0, played: 0 };
+  setSize(lv.n);
   newRound();
   bites.play(lv.bites, () => { if (S.goalReached) levelDone(); else updateUI(); });
 }
 
+function setSize(n) {
+  S.n = n;
+  S.code = QEC.codes.repetitionCode(n);
+  W = cv.width = 180 + (n - 1) * (n <= 3 ? 170 : 140);   // fewer qubits → narrower board, bigger on phones
+}
+
 function newRound() {
-  const n = S.lv.n;
-  S.phase = 'ready';          // ready → hidden (glitched) → [failed ↔ hidden] → revealed
+  const n = S.n;
+  S.phase = S.lv.pick ? 'pick' : 'ready';   // [pick →] ready → hidden (glitched) → [failed ↔ hidden] → revealed
   S.err = P.identity(n);
   S.corr = P.identity(n);
   S.result = null;
   S.retried = false;
-  setStatus('All quiet. Press ⚡ GLITCH to start the round.', 'info');
+  if (S.lv.pick) {
+    S.k = bagBurst();
+    setStatus(`Incoming: a burst of ${S.k} glitch${S.k > 1 ? 'es' : ''}. Pick a code.`, 'warn');
+  } else setStatus('All quiet. Press ⚡ GLITCH to start the round.', 'info');
   updateUI();
+}
+
+// PICK A SIZE: build the chosen code, let the burst hit, and let the fewest-flips rule answer.
+function pickSize(n) {
+  if (S.phase !== 'pick' || !bites.open) return;
+  setSize(n);
+  S.err = S.lv.errors(n, S.k);
+  S.corr = P.identity(n);
+  S.phase = 'auto';
+  setStatus(`⚡ ${S.k} glitch${S.k > 1 ? 'es' : ''} hit. Decoding with the fewest flips…`, 'error');
+  updateUI();
+  setTimeout(() => {
+    S.corr = D.matchingDecode(S.code, D.syndrome(S.code, S.err));
+    S.result = D.residualStatus(S.code, S.err, S.corr);
+    const t = QEC.codes.correctable(n), best = QEC.codes.distanceFor(S.k);
+    const right = n === best;
+    QEC.progress.note('ch3', `pick-${S.k}`, { kind: 'task', ok: right });
+    const fixes = `${n} qubits fix any ${t} glitch${t > 1 ? 'es' : ''}`;
+    if (right) {
+      S.solved++;
+      QEC.ui.fx.good(cv);
+      setStatus(`✓ Right size: ${fixes} — and not one qubit more.`, 'success');
+    } else if (S.result === 'ok') {
+      QEC.ui.fx.nudge(cv);
+      setStatus(`Safe, but wasteful: ${fixes}. ${best} would have done. Doesn't count.`, 'warn');
+    } else {
+      QEC.ui.fx.bad(cv);
+      setStatus(`✗ Too small: ${fixes}. ${S.k} glitches look like ${n - S.k} on the other qubits, so the fix completes the flip.`, 'error');
+    }
+    endRound();
+  }, 900);
 }
 
 const residual = () => P.compose(S.err, S.corr);
@@ -140,7 +194,7 @@ const syndrome = () => D.syndrome(S.code, residual());
 
 function glitch() {
   if (S.phase !== 'ready' || !bites.open) return;
-  S.err = S.lv.errors(S.lv.n);
+  S.err = S.lv.errors(S.n);
   S.phase = 'hidden';
   setStatus('⚡ Something glitched. Read the checkers.', 'error');
   bites.notify('glitch');
@@ -192,7 +246,7 @@ function check() {
 
 function retry() {
   if (S.phase !== 'failed') return;
-  S.corr = P.identity(S.lv.n);
+  S.corr = P.identity(S.n);
   S.result = null;
   S.retried = true;
   S.phase = 'hidden';
@@ -217,6 +271,7 @@ function levelDone() {
     0: '✓ <b>Level complete.</b> You located errors using only "are you equal?" questions.',
     1: '✓ <b>Level complete.</b> More qubits, more checkers — and more glitches you can handle.',
     2: '✓ <b>Lesson learned:</b> a code with distance <b>d</b> can fix up to <b>(d−1)/2</b> glitches. Three qubits: distance 3, one glitch.',
+    3: '✓ <b>Level complete.</b> To survive <b>k</b> glitches you need distance <b>2k + 1</b>. Every extra qubit is one more that can glitch, so engineers pick exactly that.',
   }[S.idx];
   bites.finish(last
     ? '✓ <b>Chapter complete.</b> Parity checks find bit flips without looking. Next: what changes when checkers sit on a grid.'
@@ -234,11 +289,14 @@ function setStatus(msg, cls) { $('status').textContent = msg; $('status').classN
 function updateUI() {
   if (!S) return;
   const lv = S.lv;
-  $('h-solved-lbl').textContent = lv.countAll ? 'ROUNDS' : 'SOLVED';
+  $('h-solved-lbl').textContent = lv.countAll ? 'ROUNDS' : lv.pick ? 'RIGHT SIZE' : 'SOLVED';
   $('h-solved').textContent = lv.countAll ? `${S.played}/${lv.goal}` : `${S.solved}/${lv.goal}`;
-  $('h-syn').textContent = S.phase === 'ready' ? '–' : syndrome().join('');
+  $('h-syn').textContent = S.phase === 'ready' || S.phase === 'pick' ? '–' : syndrome().join('');
   $('btn-glitch').disabled = S.phase !== 'ready' || !bites.open;
   $('btn-check').disabled = S.phase !== 'hidden' || !bites.open;
+  $('btn-glitch').style.display = $('btn-check').style.display = lv.pick ? 'none' : '';
+  $('sizes').style.display = S.phase === 'pick' ? '' : 'none';
+  document.querySelectorAll('[data-n]').forEach(b => (b.disabled = !bites.open));
   $('btn-round').style.display = S.phase === 'revealed' ? '' : 'none';
   $('btn-retry').style.display = $('btn-reveal').style.display = S.phase === 'failed' ? '' : 'none';
 }
@@ -249,10 +307,11 @@ $('btn-check').onclick = check;
 $('btn-round').onclick = () => { if (S.phase === 'revealed') newRound(); };
 $('btn-retry').onclick = retry;
 $('btn-reveal').onclick = () => { if (S.phase === 'failed') endRound(); };
+document.querySelectorAll('[data-n]').forEach(b => (b.onclick = () => pickSize(Number(b.dataset.n))));
 
-const qx = c => { const n = S.lv.n; return n === 1 ? W / 2 : 90 + c * (W - 180) / (n - 1); };
+const qx = c => { const n = S.n; return n === 1 ? W / 2 : 90 + c * (W - 180) / (n - 1); };
 function hitQubit(p) {
-  for (let q = 0; q < S.lv.n; q++) if ((p.x - qx(q)) ** 2 + (p.y - QY) ** 2 <= (QR + 10) ** 2) return q;
+  for (let q = 0; q < S.n; q++) if ((p.x - qx(q)) ** 2 + (p.y - QY) ** 2 <= (QR + 10) ** 2) return q;
   return -1;
 }
 cv.addEventListener('click', e => { const q = hitQubit(pointer(cv, e)); if (q >= 0) flip(q); });
@@ -267,7 +326,12 @@ function diamond(x, y, s) {
 function draw(t) {
   ctx.clearRect(0, 0, W, H);
   if (!S) return;
-  const n = S.lv.n, syn = S.phase === 'ready' ? S.code.stabs.map(() => 0) : syndrome();
+  if (S.phase === 'pick') {
+    text(ctx, `INCOMING: ${S.k} GLITCH${S.k > 1 ? 'ES' : ''}`, W / 2, QY - 20, { font: 'bold 24px Courier New', color: '#ffaa00' });
+    text(ctx, 'pick a code size below', W / 2, QY + 20, { font: '16px Courier New', color: '#8fa1b3' });
+    return;
+  }
+  const n = S.n, syn = S.phase === 'ready' ? S.code.stabs.map(() => 0) : syndrome();
   const revealed = S.phase === 'revealed' || S.phase === 'done';
   const pulse = 0.6 + 0.4 * Math.sin(t * 0.006);
 

@@ -62,6 +62,7 @@ const cv = $('cv'), ctx = cv.getContext('2d');
 const W = cv.width;
 const rng = QEC.makeRng(QEC.randomSeed());
 const bites = new QEC.ui.Bites($('bites'));
+bites.logAs = 'chains';
 
 // Half of a distance-5 surface code: only the Z-checks are switched on, so only X glitches matter.
 const d = C.d, code = QEC.codes.rotatedSurfaceCode(d), N = code.n;
@@ -93,7 +94,11 @@ const LEVELS = [
       { t: 'Let them hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'Turn every tile dark, then CHECK.', wait: 'solved', hint: 'flip qubits until all tiles are dark, then CHECK' },
       'The tile <em>between</em> the two glitches saw <b>two</b> flips — even — so it stayed dark. Glitches side by side form a <b>chain</b>, and only its <b>ends</b> light up.',
-      'Solve 2 rounds. Try a <em>different</em> route between the two ends this time and see what happens.',
+      { t: 'Two lit ends can be joined by <b>two</b> equally short routes. Say you take the one the glitches did <em>not</em> take. What happens?',
+        ask: ['Logical error: wrong qubits flipped', 'Fixed: only the ends matter', 'The tiles stay lit'], answer: 1, kind: 'predict', id: 'other-route' },
+      { t: 'Test it. The glitches are marked red. Undo them by the <em>other</em> route, then CHECK.', wait: 'loop', hint: 'take the other route, then CHECK',
+        onShow: () => startDetour() },
+      'Solve one more round.',
     ],
   },
   {
@@ -159,8 +164,21 @@ function glitch() {
   updateUI();
 }
 
+// Round 1 of TWO IN A ROW again, glitches shown: the player must fix it by a route that is NOT the glitches'.
+function startDetour() {
+  input.cancel();
+  if (P.isIdentity(S.err)) S.err = S.lv.errors(S.round);   // player already moved on: take a fresh pair
+  S.corr = P.identity(N);
+  S.result = null;
+  S.phase = 'detour';
+  setStatus('Glitches shown in red. Make every tile dark WITHOUT flipping them.', 'info');
+  updateUI();
+}
+
+const fixing = () => S.phase === 'hidden' || S.phase === 'detour';
+
 function apply(q, type) {
-  if (S.phase !== 'hidden' || !bites.open) return;
+  if (!fixing() || !bites.open) return;
   if (type !== 'X') { setStatus('Only X glitches in this chapter — left-click (or tap) a qubit to flip X.', 'warn'); return; }
   P.applyAt(S.corr, q, 'X');
   reportLit();
@@ -168,7 +186,7 @@ function apply(q, type) {
 
 // Touch: set q's correction to exactly this letter (picked by tapping through Z → X → Y → none).
 function setCorr(q, letter) {
-  if (S.phase !== 'hidden' || !bites.open) return;
+  if (!fixing() || !bites.open) return;
   P.applyAt(S.corr, q, P.get(S.corr, q));   // clear
   P.applyAt(S.corr, q, letter);
   reportLit();
@@ -206,10 +224,33 @@ function logicalFeedback() {
   return `${head} This one was readable, though: a shorter fix exists. <b>↺ TRY AGAIN</b>, then <b>? HINT</b> shows which qubits a decoder flips.`;
 }
 
+function checkDetour() {
+  if (P.equal(S.err, S.corr)) {
+    setStatus('That is the glitches\' own route. Undo it and take the other one.', 'warn');
+    QEC.ui.fx.nudge(cv);
+    return;
+  }
+  S.result = D.residualStatus(code, S.err, S.corr);
+  if (S.result !== 'ok') {   // a detour all the way round the grid: possible, but not the point here
+    setStatus('Tiles dark, but that route runs off an edge and flips the stored bit. Try a short detour.', 'warn');
+    QEC.ui.fx.nudge(cv);
+    S.result = null;
+    return;
+  }
+  QEC.ui.fx.good(cv);
+  explainedLoop = true;
+  setStatus('✓ Fixed — by the other route!', 'success');
+  S.phase = 'revealed';
+  bites.notify('loop');
+  bites.feedback('Glitch + fix form a closed <b>loop</b> (green). A loop has no ends, so no tile sees it — and it does nothing to the stored bit. Only where a chain <b>ends</b> matters; the route in between is free.');
+  updateUI();
+}
+
 function check() {
   input.commit();
-  if (S.phase !== 'hidden' || !bites.open) return;
+  if (!fixing() || !bites.open) return;
   if (!D.isZero(syndrome())) { setStatus('Some tiles are still lit — keep going.', 'warn'); QEC.ui.fx.nudge(cv); return; }
+  if (S.phase === 'detour') return checkDetour();
   S.result = D.residualStatus(code, S.err, S.corr);
   bites.notify('checked');
   if (S.result === 'ok') {
@@ -281,7 +322,7 @@ function updateUI() {
   const act = bites.open;
   $('btn-glitch').disabled = S.phase !== 'ready' || !act;
   $('btn-hint').disabled = S.phase !== 'hidden' || !act;
-  $('btn-check').disabled = S.phase !== 'hidden' || !act;
+  $('btn-check').disabled = !fixing() || !act;
   $('btn-round').style.display = S.phase === 'revealed' ? '' : 'none';
   $('btn-retry').style.display = $('btn-reveal').style.display = S.phase === 'failed' ? '' : 'none';
 }
@@ -303,7 +344,7 @@ function hitQubit(p) {
 }
 const input = QEC.ui.pauliInput(cv, {
   hit: hitQubit, onApply: apply, onSet: setCorr,
-  enabled: () => !!S && S.phase === 'hidden' && bites.open,
+  enabled: () => !!S && fixing() && bites.open,
   allowed: () => ['X'],
   current: q => P.get(S.corr, q),
 });
@@ -335,6 +376,7 @@ function draw(t) {
   if (!S) return;
   const syn = S.phase === 'ready' ? code.stabs.map(() => 0) : syndrome();
   const revealed = S.phase === 'revealed' || S.phase === 'done';
+  const showErr = revealed || S.phase === 'detour';
   const pulse = 0.6 + 0.4 * Math.sin(t * 0.006);
   const residual = P.compose(S.err, S.corr);
 
@@ -362,11 +404,11 @@ function draw(t) {
   const showHint = hintCorr && t < hintUntil && S.phase === 'hidden';
   for (let q = 0; q < N; q++) {
     const { r, c } = code.data[q], x = px(c), y = py(r);
-    const errHere = revealed && S.err.x[q];
+    const errHere = showErr && S.err.x[q];
     ctx.save();
     ctx.lineWidth = 2.5;
     ctx.fillStyle = '#071022';
-    ctx.strokeStyle = errHere ? '#ff4455' : hover === q && S.phase === 'hidden' ? '#ffffff' : '#7fa8c0';
+    ctx.strokeStyle = errHere ? '#ff4455' : hover === q && fixing() ? '#ffffff' : '#7fa8c0';
     glow(ctx, ctx.strokeStyle, hover === q ? 16 : 6);
     ctx.beginPath(); ctx.arc(x, y, QR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.restore();
