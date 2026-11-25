@@ -7,6 +7,7 @@ window.TEST_MANIFEST = {
     'js/core/decoder.js',
     'js/core/sim.js',
     'js/core/hamming.js',
+    'js/core/chains.js',
   ],
   tests: [
     'tests/rng.test.js',
@@ -14,5 +15,6 @@ window.TEST_MANIFEST = {
     'tests/codes.test.js',
     'tests/sim.test.js',
     'tests/hamming.test.js',
+    'tests/chains.test.js',
   ],
 };

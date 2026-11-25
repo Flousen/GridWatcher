@@ -339,6 +339,7 @@ details#concept-panel[open] summary::before { transform: rotate(90deg); }
 
 <script src="js/core/hamming.js"></script>
 <script src="js/ui/progress.js"></script>
+<script src="js/ui/canvas.js"></script>
 <script>
 // ── Canvas setup ─────────────────────────────────────────────────────────────
 const canvas = document.getElementById('gc');
@@ -1098,14 +1099,17 @@ function finish() {
       const lbl = S.nodes[col.n1].label;
       rows.forEach(r => { if (r.dataset.lbl === lbl) r.classList.add('collide'); });
       setStatus(`✗ Node ${lbl} triggers NO sensors — glitch undetectable! Rewire and TEST again.`, 'error');
+      QEC.ui.fx.bad(el('gc'));
     } else {
       const l1 = S.nodes[col.n1].label, l2 = S.nodes[col.n2].label;
       rows.forEach(r => { if (r.dataset.lbl === l1 || r.dataset.lbl === l2) r.classList.add('collide'); });
       setStatus(`✗ COLLISION — Nodes ${l1} & ${l2} share the same alarm pattern. Rewire and TEST again.`, 'error');
+      QEC.ui.fx.bad(el('gc'));
     }
     startLoop();
   } else {
     setStatus('✓ ALL PATTERNS UNIQUE — Level Complete!', 'success');
+    QEC.ui.fx.good(el('gc'));
     const lv = LEVELS[S.lvIdx];
     if (lv.takeaway) { el('takeaway').innerHTML = lv.takeaway; el('takeaway').style.display = 'block'; }
     const lastCore = S.lvIdx === CORE_LEVELS - 1;

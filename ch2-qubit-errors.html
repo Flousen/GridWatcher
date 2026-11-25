@@ -188,12 +188,14 @@ function applyGate(g) {
     S.fixed++;
     if (S.moves === 1) S.perfect++;
     setStatus(S.moves === 1 ? '✓ Fixed in one move!' : `✓ Fixed (${S.moves} moves).`, 'success');
+    QEC.ui.fx.good(cv);
     bites.notify('fixed');
     updateUI();
     if (S.fixed >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 700); }
     else setTimeout(() => { if (S.phase === 'fixed') newRound(); }, 1100);
   } else {
     setStatus('Not there yet — compare with the dashed arrow.', 'warn');
+    QEC.ui.fx.nudge(cv);
     updateUI();
   }
 }

@@ -107,7 +107,7 @@ const LEVELS = [
     bites: [
       { t: 'One last glitch. Go ahead.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'Hm. Every checker stays dark. Nothing to fix? Press CHECK.', wait: 'checked', hint: 'press CHECK' },
-      'It was a <span class="z">Z</span> glitch! These checkers compare <em>bit values</em> only, so a <b>phase flip</b> slips right through. To catch both kinds we need two kinds of checkers — on a 2D grid. That\'s the <b>surface code</b>.',
+      'It was a <span class="z">Z</span> glitch! These checkers compare <em>bit values</em> only, so a <b>phase flip</b> slips right through. To catch both kinds we need two kinds of checkers on a 2D grid — the <b>surface code</b>. First step: what changes when checkers sit on a grid at all? That\'s Chapter 4.',
     ],
   },
 ];
@@ -160,11 +160,12 @@ function flip(q) {
 
 function check() {
   if (S.phase !== 'hidden' || !bites.open) return;
-  if (!D.isZero(syndrome())) { setStatus('Some checkers are still lit — keep going.', 'warn'); return; }
+  if (!D.isZero(syndrome())) { setStatus('Some checkers are still lit — keep going.', 'warn'); QEC.ui.fx.nudge(cv); return; }
   S.result = D.residualStatus(S.code, S.err, S.corr);
   // advance the briefing first, so feedback below lands under the new bite
   bites.notify('checked');
   if (S.result === 'ok') {
+    QEC.ui.fx.good(cv);
     bites.notify('solved');
     S.solved++;
     setStatus('✓ Fixed! The stored qubit is safe.', 'success');
@@ -176,10 +177,12 @@ function check() {
   if (S.err.z.some(Boolean)) {
     // a phase flip: no X fix could ever help, so there is nothing to retry
     setStatus('✗ A phase flip went unnoticed — the stored qubit is damaged.', 'error');
+    QEC.ui.fx.bad(cv);
     return endRound();
   }
   // Wrong fix: keep the glitch hidden and let the player try again.
   S.phase = 'failed';
+  QEC.ui.fx.bad(cv);
   setStatus('✗ Logical error! The checkers are dark, but glitch + your fix flipped ALL qubits (|000⟩ ↔ |111⟩).', 'error');
   bites.feedback(S.lv.countAll
     ? 'Two glitches look exactly like one glitch on the <em>other</em> qubit, so the obvious fix completes the flip: a <b>logical error</b>. Three qubits can only fix <b>one</b> glitch — the code\'s <b>distance</b> limit. Try again, or show the answer.'
@@ -216,10 +219,10 @@ function levelDone() {
     2: '✓ <b>Lesson learned:</b> a code with distance <b>d</b> can fix up to <b>(d−1)/2</b> glitches. Three qubits: distance 3, one glitch.',
   }[S.idx];
   bites.finish(last
-    ? '✓ <b>Chapter complete.</b> Parity checks find bit flips without looking. Next: a grid that catches phase flips too.'
+    ? '✓ <b>Chapter complete.</b> Parity checks find bit flips without looking. Next: what changes when checkers sit on a grid.'
     : msg,
     last
-      ? [{ label: 'CHAPTER 4 →', onClick: () => (location.href = 'ch4-surface.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
+      ? [{ label: 'CHAPTER 4 →', onClick: () => (location.href = 'ch4-chains.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
       : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(S.idx + 1) }]);
   S.phase = 'done';
   updateUI();

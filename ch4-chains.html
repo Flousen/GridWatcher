@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chains</title>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+#btn-glitch { color: var(--amber); border-color: #885500; }
+canvas { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="index.html">← MAP</a>
+  <div><div class="eyebrow">CHAPTER 4</div><h1>CHAINS</h1></div>
+  <div class="levels" id="levels"></div>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <div class="hud">
+      <div class="chip"><span id="h-goal-lbl">SOLVED</span> <b id="h-goal">0/0</b></div>
+      <div class="chip">LIT <b id="h-lit">0</b></div>
+      <div class="chip">HINTS <b id="h-hints">0</b></div>
+    </div>
+    <canvas id="cv" width="560" height="560"></canvas>
+    <div class="controls">
+      <button class="btn" id="btn-glitch">⚡ GLITCH</button>
+      <button class="btn" id="btn-hint">? HINT</button>
+      <button class="btn go" id="btn-check">✓ CHECK</button>
+      <button class="btn" id="btn-retry">↺ TRY AGAIN</button>
+      <button class="btn" id="btn-reveal">SHOW ANSWER</button>
+      <button class="btn next" id="btn-round">NEXT ROUND →</button>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:rgba(255,136,34,.5);border:1px solid #ff8822"></span> Z-check: catches X flips</span>
+      <span><span class="sw" style="background:rgba(136,153,170,.1);border:1px dashed #8899aa"></span> switched off until Chapter 5</span>
+      <span>click (tap) a qubit = <span class="x">X</span></span>
+    </div>
+    <div class="status info" id="status"></div>
+  </section>
+  <aside class="bites" id="bites"></aside>
+</main>
+
+<script src="js/core/rng.js"></script>
+<script src="js/core/pauli.js"></script>
+<script src="js/core/codes.js"></script>
+<script src="js/core/decoder.js"></script>
+<script src="js/core/chains.js"></script>
+<script src="js/ui/progress.js"></script>
+<script src="js/ui/canvas.js"></script>
+<script src="js/ui/bites.js"></script>
+<script src="js/ui/surface.js"></script>
+<script>
+'use strict';
+const P = QEC.Pauli, D = QEC.decoder, C = QEC.chains;
+const { glow, noGlow, text, pointer } = QEC.ui;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const W = cv.width;
+const rng = QEC.makeRng(QEC.randomSeed());
+const bites = new QEC.ui.Bites($('bites'));
+
+// Half of a distance-5 surface code: only the Z-checks are switched on, so only X glitches matter.
+const d = C.d, code = QEC.codes.rotatedSurfaceCode(d), N = code.n;
+const G = QEC.ui.surface.geometry(d, W, 100), { px, py } = G, QR = 19;
+const COL = QEC.ui.surface.COL;
+const tilePath = s => QEC.ui.surface.tilePath(ctx, code, s, G);
+
+// ── Levels ─────────────────────────────────────────────────────────────────
+// Glitch patterns come from js/core/chains.js (tested) through shuffle bags, so rounds don't repeat.
+const from = list => { const bag = rng.bag(list); return () => P.on(N, C.qubits(bag()), 'X'); };
+const shortWins = from(C.shortWins), longWins = from(C.longWins);
+
+const LEVELS = [
+  {
+    name: 'FOUR AT ONCE', goal: 3, errors: from(C.single),
+    bites: [
+      'Chapter 3 put qubits in a row. Now they sit on a <b>grid</b>: 25 qubits, 5 × 5, storing one well-protected bit. Only <span class="x">X</span> glitches for now.',
+      'The <span class="z">orange tiles</span> are <b>Z-checks</b>: the same "are you equal?" question as the checkers before, asked to <b>four</b> qubits at once (two on the edge). A tile lights up when an <em>odd</em> number of its qubits got flipped.',
+      'Here is the catch: a tile only reports <em>odd or even</em> — never <em>which one</em>. A lit tile is not a pointer at a qubit. But every qubit inside the grid sits under <b>two</b> orange tiles.',
+      { t: 'Let an <span class="x">X</span> glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Two tiles lit. Find the one qubit that touches <em>both</em>. Click it to apply <span class="x">X</span>, then CHECK.', wait: 'solved', hint: 'click a qubit, then CHECK' },
+      'Solve 3 rounds. The grey squares are switched off for now — Chapter 5 turns them on.',
+    ],
+  },
+  {
+    name: 'TWO IN A ROW', goal: 2, errors: from(C.pair),
+    bites: [
+      'Two glitches this time. Look closely: which tiles light up — and which stay dark?',
+      { t: 'Let them hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Turn every tile dark, then CHECK.', wait: 'solved', hint: 'flip qubits until all tiles are dark, then CHECK' },
+      'The tile <em>between</em> the two glitches saw <b>two</b> flips — even — so it stayed dark. Glitches side by side form a <b>chain</b>, and only its <b>ends</b> light up.',
+      'Solve 2 rounds. Try a <em>different</em> route between the two ends this time and see what happens.',
+    ],
+  },
+  {
+    name: 'LONG CHAIN', goal: 2, errors: from(C.run),
+    bites: [
+      'Three glitches. Count the lit tiles before you fix anything.',
+      { t: 'Let them hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Only two tiles — the chain\'s two ends. Connect them with flips until every tile is dark. Any route works.', wait: 'solved', hint: 'connect the two lit tiles, then CHECK' },
+      'The middle of a chain is invisible: every tile along it sees two flips. All you — and any decoder — ever get to see are the <b>ends</b>. The route has to be guessed. Solve 2 rounds.',
+    ],
+  },
+  {
+    name: 'EDGE', goal: 2, errors: from(C.edge),
+    bites: [
+      'The top and bottom edges have <b>no</b> orange tiles. A chain can run off the grid there and leave no trace.',
+      { t: 'Let a glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Only <b>one</b> tile lit: the chain shows one end, the other end ran off an edge. Which edge? Fix it, then CHECK.', wait: 'checked', hint: 'fix it, then CHECK' },
+      'Two answers turn that tile dark: a short chain to the <b>near</b> edge, or a long one to the <b>far</b> edge. A few glitches are far more likely than many, so bet on short. Solve 2 rounds.',
+    ],
+  },
+  {
+    name: 'QUIET BUT LOST', goal: 2, countAll: true,
+    errors: round => (round % 2 === 0 ? shortWins() : longWins()),
+    bites: [
+      'Last level. Same kind of puzzle: one lit tile near an edge. Use the <b>fewest</b> flips that turn it dark.',
+      { t: 'Let it hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Fewest flips, then CHECK.', wait: 'checked', hint: 'fix with the fewest flips, then CHECK' },
+      'A program that picks the most likely fix for the lit tiles is called a <b>decoder</b>. It bets the way you just did. Play one more round — same rule.',
+    ],
+  },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let S = null, hover = -1, hintUntil = 0, hintCorr = null, explainedLoop = false;
+
+function startLevel(i) {
+  const lv = LEVELS[i];
+  S = { lv, idx: i, solved: 0, played: 0, round: 0, hints: 0 };
+  newRound();
+  bites.play(lv.bites, () => { if (S.goalReached) levelDone(); else updateUI(); });
+}
+
+function newRound() {
+  input.cancel();
+  S.phase = 'ready';
+  S.err = P.identity(N);
+  S.corr = P.identity(N);
+  S.result = null;
+  S.retried = false;
+  hintUntil = 0;
+  setStatus('All quiet. Press ⚡ GLITCH.', 'info');
+  updateUI();
+}
+
+const syndrome = () => D.syndrome(code, P.compose(S.err, S.corr));
+
+function glitch() {
+  if (S.phase !== 'ready' || !bites.open) return;
+  S.err = S.lv.errors(S.round);
+  S.phase = 'hidden';
+  setStatus('⚡ Glitch! Read the lit tiles.', 'error');
+  bites.notify('glitch');
+  updateUI();
+}
+
+function apply(q, type) {
+  if (S.phase !== 'hidden' || !bites.open) return;
+  if (type !== 'X') { setStatus('Only X glitches in this chapter — left-click (or tap) a qubit to flip X.', 'warn'); return; }
+  P.applyAt(S.corr, q, 'X');
+  reportLit();
+}
+
+// Touch: set q's correction to exactly this letter (picked by tapping through Z → X → Y → none).
+function setCorr(q, letter) {
+  if (S.phase !== 'hidden' || !bites.open) return;
+  P.applyAt(S.corr, q, P.get(S.corr, q));   // clear
+  P.applyAt(S.corr, q, letter);
+  reportLit();
+}
+
+function reportLit() {
+  const lit = syndrome().filter(Boolean).length;
+  setStatus(lit ? `${lit} tile${lit > 1 ? 's' : ''} still lit.` : 'All tiles dark. Press ✓ CHECK.', lit ? 'info' : 'success');
+  updateUI();
+}
+
+function hint() {
+  input.commit();
+  if (S.phase !== 'hidden' || !bites.open) return;
+  // what a minimum-weight decoder would add on top of your current fixes
+  hintCorr = D.matchingDecode(code, syndrome());
+  hintUntil = performance.now() + 2500;
+  S.hints++;
+  setStatus(P.isIdentity(hintCorr) ? 'The decoder would stop here.' : 'Dashed badges: the decoder\'s suggestion.', 'info');
+  updateUI();
+}
+
+// Would the best decoder have failed on these same tiles? Then the board could not have told the player.
+function decoderAlsoFails() {
+  return D.residualStatus(code, S.err, D.matchingDecode(code, D.syndrome(code, S.err))) === 'logical';
+}
+
+function logicalFeedback() {
+  const head = 'Glitch + fix join into one chain from the <b>top edge to the bottom edge</b>. No tile can see such a chain — that is why every tile went dark — but it flipped the stored bit. That is a <b>logical error</b>.';
+  if (decoderAlsoFails()) {
+    return `${head} Nothing on the board could have warned you: the glitches took the <em>long</em> way, and every decoder bets on the short one. `
+      + 'This grid has <b>distance 5</b> — the shortest invisible chain is 5 flips — so it undoes any 2 glitches, but 3 can pass themselves off as a shorter chain to the other edge. '
+      + '<b>SHOW ANSWER</b> to see them, or <b>↺ TRY AGAIN</b> and take the long way.';
+  }
+  return `${head} This one was readable, though: a shorter fix exists. <b>↺ TRY AGAIN</b>, then <b>? HINT</b> shows which qubits a decoder flips.`;
+}
+
+function check() {
+  input.commit();
+  if (S.phase !== 'hidden' || !bites.open) return;
+  if (!D.isZero(syndrome())) { setStatus('Some tiles are still lit — keep going.', 'warn'); QEC.ui.fx.nudge(cv); return; }
+  S.result = D.residualStatus(code, S.err, S.corr);
+  bites.notify('checked');
+  if (S.result === 'ok') {
+    QEC.ui.fx.good(cv);
+    bites.notify('solved');
+    S.solved++;
+    if (S.retried) bites.feedback('Second try worked. A real decoder gets only <b>one</b> guess per round.');
+    if (P.equal(S.err, S.corr)) setStatus('✓ Fixed — exactly the glitched qubits.', 'success');
+    else {
+      setStatus('✓ Fixed — by a different route than the glitches! Still perfect.', 'success');
+      if (!explainedLoop) {
+        explainedLoop = true;
+        bites.feedback('Your fix took a different route than the glitches, yet it worked. Together they form a closed <b>loop</b> (green): it has no ends, so no tile sees it, and it does nothing to the stored bit. Only where a chain <b>ends</b> matters — the route in between is free.');
+      }
+    }
+    return endRound();
+  }
+  S.phase = 'failed';
+  QEC.ui.fx.bad(cv);
+  setStatus('✗ Logical error! The tiles are dark, but the stored bit got flipped.', 'error');
+  bites.feedback(logicalFeedback());
+  updateUI();
+}
+
+function retry() {
+  if (S.phase !== 'failed') return;
+  input.cancel();
+  S.corr = P.identity(N);
+  S.result = null;
+  S.retried = true;
+  S.phase = 'hidden';
+  setStatus('Same glitch, fresh start. Read the tiles again.', 'info');
+  updateUI();
+}
+
+function endRound() {
+  if (S.result === 'logical') bites.feedback('Glitch + fix form a chain from edge to edge (yellow). Dashed red: where the glitches really were.');
+  S.phase = 'revealed';
+  S.played++;
+  S.round++;
+  updateUI();
+  const count = S.lv.countAll ? S.played : S.solved;
+  if (count >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 900); }
+}
+
+function levelDone() {
+  chapter.complete(S.idx);
+  const last = chapter.isLast(S.idx);
+  bites.finish(last
+    ? '✓ <b>Chapter complete.</b> Errors on a grid form <b>chains</b>, and checks only see their ends. A decoder guesses the shortest chain — right as long as glitches are rare, fooled when they gang up. But this grid only guards against <span class="x">X</span>: a <span class="z">Z</span> glitch slips through, just like in Chapter 3. Chapter 5 switches on the grey tiles.'
+    : '✓ <b>Level complete.</b>',
+    last
+      ? [{ label: 'CHAPTER 5 →', onClick: () => (location.href = 'ch5-surface.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
+      : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(S.idx + 1) }]);
+  S.phase = 'done';
+  updateUI();
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function setStatus(msg, cls) { $('status').textContent = msg; $('status').className = 'status ' + cls; }
+
+function updateUI() {
+  if (!S) return;
+  const lv = S.lv;
+  $('h-goal-lbl').textContent = lv.countAll ? 'ROUNDS' : 'SOLVED';
+  $('h-goal').textContent = `${lv.countAll ? S.played : S.solved}/${lv.goal}`;
+  $('h-lit').textContent = S.phase === 'ready' ? 0 : syndrome().filter(Boolean).length;
+  $('h-hints').textContent = S.hints;
+  const act = bites.open;
+  $('btn-glitch').disabled = S.phase !== 'ready' || !act;
+  $('btn-hint').disabled = S.phase !== 'hidden' || !act;
+  $('btn-check').disabled = S.phase !== 'hidden' || !act;
+  $('btn-round').style.display = S.phase === 'revealed' ? '' : 'none';
+  $('btn-retry').style.display = $('btn-reveal').style.display = S.phase === 'failed' ? '' : 'none';
+}
+bites.onChange = updateUI;
+
+$('btn-glitch').onclick = glitch;
+$('btn-hint').onclick = hint;
+$('btn-check').onclick = check;
+$('btn-round').onclick = () => { if (S.phase === 'revealed') newRound(); };
+$('btn-retry').onclick = retry;
+$('btn-reveal').onclick = () => { if (S.phase === 'failed') endRound(); };
+
+function hitQubit(p) {
+  for (let q = 0; q < N; q++) {
+    const { r, c } = code.data[q];
+    if ((p.x - px(c)) ** 2 + (p.y - py(r)) ** 2 <= (QR + 12) ** 2) return q;
+  }
+  return -1;
+}
+const input = QEC.ui.pauliInput(cv, {
+  hit: hitQubit, onApply: apply, onSet: setCorr,
+  enabled: () => !!S && S.phase === 'hidden' && bites.open,
+  allowed: () => ['X'],
+  current: q => P.get(S.corr, q),
+});
+cv.addEventListener('mousemove', e => { hover = hitQubit(pointer(cv, e)); });
+cv.addEventListener('mouseleave', () => { hover = -1; });
+
+// ── Drawing ────────────────────────────────────────────────────────────────
+function badge(x, y, letter, { dashed = false } = {}) {
+  ctx.save();
+  ctx.strokeStyle = COL[letter]; ctx.fillStyle = dashed ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 2;
+  if (dashed) ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  text(ctx, letter, x, y + 1, { font: 'bold 14px Courier New', color: COL[letter] });
+}
+
+function ring(q, color, pulse, dash) {
+  const { r, c } = code.data[q];
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash(dash);
+  glow(ctx, color, 14 * pulse);
+  ctx.beginPath(); ctx.arc(px(c), py(r), QR + 8, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, W);
+  if (!S) return;
+  const syn = S.phase === 'ready' ? code.stabs.map(() => 0) : syndrome();
+  const revealed = S.phase === 'revealed' || S.phase === 'done';
+  const pulse = 0.6 + 0.4 * Math.sin(t * 0.006);
+  const residual = P.compose(S.err, S.corr);
+
+  QEC.ui.surface.drawTiles(ctx, code, G, syn, t, { only: 'Z' });
+
+  // a harmless loop: glitch + fix close up on themselves (often around one switched-off tile)
+  if (revealed && S.result === 'ok' && !P.isIdentity(residual)) {
+    code.stabPaulis.forEach((sp, k) => {
+      if (!P.equal(sp, residual)) return;
+      ctx.save();
+      tilePath(code.stabs[k]);
+      ctx.fillStyle = '#00ff88'; ctx.globalAlpha = 0.12; ctx.fill();
+      ctx.globalAlpha = 1; ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 3; glow(ctx, '#00ff88', 16 * pulse);
+      ctx.stroke();
+      ctx.restore();
+    });
+    for (let q = 0; q < N; q++) if (residual.x[q]) ring(q, '#00ff88', pulse, []);
+  }
+
+  // logical error: the edge-to-edge chain through the leftover qubits
+  if (revealed && S.result === 'logical') {
+    for (let q = 0; q < N; q++) if (residual.x[q]) ring(q, '#ffee00', pulse, [8, 6]);
+  }
+
+  const showHint = hintCorr && t < hintUntil && S.phase === 'hidden';
+  for (let q = 0; q < N; q++) {
+    const { r, c } = code.data[q], x = px(c), y = py(r);
+    const errHere = revealed && S.err.x[q];
+    ctx.save();
+    ctx.lineWidth = 2.5;
+    ctx.fillStyle = '#071022';
+    ctx.strokeStyle = errHere ? '#ff4455' : hover === q && S.phase === 'hidden' ? '#ffffff' : '#7fa8c0';
+    glow(ctx, ctx.strokeStyle, hover === q ? 16 : 6);
+    ctx.beginPath(); ctx.arc(x, y, QR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    const fix = P.get(S.corr, q), pend = input.pending;
+    if (pend && pend.q === q) QEC.ui.drawPending(ctx, x, y, QR, pend, t, COL);
+    else if (fix !== 'I') badge(x, y, fix);
+    else text(ctx, '?', x, y + 1, { font: 'bold 14px Courier New', color: '#6f93ad' });
+    if (showHint && P.get(hintCorr, q) !== 'I') badge(x + 18, y - 18, P.get(hintCorr, q), { dashed: true });
+    if (errHere) {
+      ctx.save();
+      ctx.strokeStyle = '#ff4455'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.arc(x, y, QR + 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  if ((revealed || S.phase === 'failed') && S.result) {
+    const ok = S.result === 'ok';
+    glow(ctx, ok ? '#00ff88' : '#ff4455', 20);
+    text(ctx, ok ? '✓ FIXED' : '✗ LOGICAL ERROR', W / 2, 22, { font: 'bold 22px Courier New', color: ok ? '#00ff88' : '#ff4455' });
+    noGlow(ctx);
+  }
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+const chapter = QEC.ui.chapter({ id: 'chains', el: $('levels'), levels: LEVELS.map(l => l.name), start: startLevel });
+chapter.begin();
+QEC.ui.loop(draw);
+</script>
+</body>
+</html>

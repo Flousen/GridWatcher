@@ -160,7 +160,7 @@ suite('surface code d=3 lookup decoder', () => {
     assert.ok(failures > 0);
   });
 
-  // Chapter 4 tells a player who hit a logical error to add a column of X (or a row of Z)
+  // Chapter 5 tells a player who hit a logical error to add a column of X (or a row of Z)
   // on top of their fix. That advice has to actually land on the other valid correction.
   test('adding the logical operator repairs any logical error', () => {
     const types = ['X', 'Y', 'Z'];

@@ -28,9 +28,19 @@
   }
 
   // All tiles; lit ones (syn[k] = 1) glow and pulse with time t.
-  function drawTiles(ctx, code, g, syn, t) {
+  // { only: 'Z' } draws just the Z-checks in colour; the others become faint grey "switched off" tiles.
+  function drawTiles(ctx, code, g, syn, t, { only = null } = {}) {
     const pulse = 0.6 + 0.4 * Math.sin(t * 0.006);
     code.stabs.forEach((s, k) => {
+      if (only && s.type !== only) {
+        ctx.save();
+        tilePath(ctx, code, s, g);
+        ctx.fillStyle = '#8899aa'; ctx.globalAlpha = 0.05; ctx.fill();
+        ctx.globalAlpha = 0.3; ctx.strokeStyle = '#8899aa'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
       const col = COL[s.type], lit = syn[k];
       ctx.save();
       tilePath(ctx, code, s, g);
