@@ -30,5 +30,12 @@
     return nodeIds.filter(id => alarmPattern(conns, id).key === key);
   }
 
-  QEC.hamming = { alarmPattern, findCollision, locate };
+  // Wires one sensor may take. Among the 2^k − 1 non-zero k-bit syndromes, 2^(k−1) have a given bit
+  // set, so this cap fits EVERY wiring with distinct syndromes (no valid plan is ever refused).
+  // Never below 4, the flat cap the game started with.
+  function maxWires(sensorCount) {
+    return Math.max(4, 2 ** (sensorCount - 1));
+  }
+
+  QEC.hamming = { alarmPattern, findCollision, locate, maxWires };
 })(window.QEC = window.QEC || {});

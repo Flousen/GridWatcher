@@ -12,8 +12,7 @@ canvas { cursor: crosshair; touch-action: none; }
 .bite-actions .btn { white-space: nowrap; }   /* CHAPTER 2 → and CHALLENGES → side by side */
 
 /* Alarm pattern log: one row per node after TEST */
-#log-wrap { margin-top: 12px; width: min(700px, 100%); }
-#log-wrap:has(#log-entries:empty) { display: none; }   /* shown from the first TEST on */
+#log-wrap { margin-top: 12px; width: min(700px, 100%); }   /* hidden until the first TEST */
 #log-label { color: #7e92a6; font-size: 0.72em; letter-spacing: 2px; margin: 0 4px 6px; }
 #log-entries {
   background: rgba(0,0,0,0.45);
@@ -72,10 +71,10 @@ canvas { cursor: crosshair; touch-action: none; }
     <div class="legend">
       <span>click empty space = <b style="color:var(--purple)">sensor</b></span>
       <span>click a sensor, then nodes = wire / unwire</span>
-      <span>right-click a sensor = remove</span>
+      <span>right-click / long-press a sensor = remove</span>
     </div>
     <div class="status info" id="status"></div>
-    <div id="log-wrap">
+    <div id="log-wrap" hidden>
       <div id="log-label">// ALARM PATTERN LOG //</div>
       <div id="log-entries"></div>
     </div>
@@ -136,7 +135,9 @@ function pts_circle(n, cx, cy, r, startAngle = -Math.PI/2) {
 // `tip` comes up when TEST finds two nodes with the same pattern; `done` closes the level.
 // The word "syndrome" appears only after level 1 is solved: experience first, name second.
 const skipIf = (evt, already) => () => { if (already()) setTimeout(() => bites.notify(evt), 0); };
-const LOCATE = { t: 'Now use it. A node glitched and the alarm rang, but the node stays hidden. Click the one that glitched.', wait: 'located', hint: 'click the glitched node' };
+// The alarm rings only once this bite is up (level 3 has text bites between TEST and LOCATE).
+const LOCATE = { t: 'Now use it. A node glitched and the alarm rang, but the node stays hidden. Click the one that glitched.', wait: 'located', hint: 'click the glitched node',
+  onShow: () => startLocate() };
 
 const LEVELS = [
   {
@@ -265,10 +266,9 @@ function startLevel(idx) {
     sensors:  [],
     conns:    new Map(), // sensorId → Set<nodeId>
     budget:   lv.sensorBudget,
-    // Hamming(15,11) needs 8 wires per sensor; the old flat cap of 4 made the last challenges unsolvable.
-    maxConn:  Math.max(4, Math.ceil(lv.nodes.length / 2)),
-    selId:    null,      // selected sensor id
-    nextId:   0,
+    maxConn:  QEC.hamming.maxWires(lv.sensorBudget),   // fits every distinct-syndrome wiring
+    complete: false,     // all bites through: RESET then replays the level
+    selId:    null,      // selected sensor id; ids stay 0..k−1, so S1..Sk are bit positions 1..k
     testAnim: null,      // { nodeId, triggered: [] }
     results:  [],
     collision:null,      // { n1, n2 } or { n1, isolated:true }
@@ -282,13 +282,16 @@ function startLevel(idx) {
   stopLoop();   // also draws the fresh board
 }
 
-// RESET clears the wiring; the briefing stays where it is.
+// RESET clears the wiring; the briefing stays where it is. Once the level is complete it becomes
+// REPLAY and restarts the level, so the player can try another wiring.
 function resetWiring() {
+  if (S.complete) return chapter.go(S.lvIdx);
   if (!canBuild()) return;
   const lv = LEVELS[S.lvIdx];
-  Object.assign(S, { phase: 'build', sensors: [], conns: new Map(), budget: lv.sensorBudget, selId: null, nextId: 0, results: [], collision: null });
+  Object.assign(S, { phase: 'build', sensors: [], conns: new Map(), budget: lv.sensorBudget, selId: null, results: [], collision: null });
   stopLoop();
   clearLog();
+  bites.feedback(null);   // advice about the old wiring no longer applies
   setPhaseLabel('BUILD');
   setStatus('Wiring cleared.', 'info');
   updateUI();
@@ -307,9 +310,12 @@ function updateUI() {
   el('hl-nodes').textContent  = S.nodes.length;
   el('hl-budget').textContent = S.budget;
   el('btn-test').disabled  = !canTest();
-  el('btn-reset').disabled = !canBuild();
+  el('btn-reset').disabled = !(canBuild() || S.complete);
+  el('btn-reset').textContent = S.complete ? '↺ REPLAY' : '↺ RESET';
+  el('btn-reset').title = S.complete ? 'Play this level again' : 'Clear the wiring';
 }
-bites.onChange = updateUI;
+// The briefing can lock or unlock the board: redraw so the drag line follows (unless the loop runs).
+bites.onChange = () => { updateUI(); if (!rafId && S.nodes) render(); };
 
 function setStatus(msg, cls = 'info') {
   const sb = el('status');
@@ -323,6 +329,7 @@ function setPhaseLabel(txt) {
 
 function clearLog() {
   el('log-entries').innerHTML = '';
+  el('log-wrap').hidden = true;
 }
 
 // One row per tested node: which sensors rang, and the same as bits (S1 S2 S3 … from the left).
@@ -334,6 +341,7 @@ function addLogRow(nodeLabel, triggeredIds, isCollide, isEmpty) {
   const patStr = isEmpty ? '∅ NO SENSOR RINGS' : triggeredIds.map(id => `S${id+1}`).join(' + ');
   row.innerHTML = `<span class="nid">Node ${nodeLabel}</span><span class="pat">${patStr}</span><span class="bits">${bits}</span>`;
   el('log-entries').appendChild(row);
+  el('log-wrap').hidden = false;
   el('log-entries').scrollTop = 9999;
 }
 
@@ -638,7 +646,7 @@ function render(ts = 0) {
   }
 
   // ── Hover drag line ──
-  if (phase === 'build' && selId !== null && mouseXY) {
+  if (phase === 'build' && selId !== null && mouseXY && canBuild()) {
     const sel = sensors.find(s => s.id === selId);
     if (sel) drawDashedConn(sel.x, sel.y, mouseXY.x, mouseXY.y);
   }
@@ -771,7 +779,15 @@ function editable() {
 
 canvas.addEventListener('click', e => {
   if (S.phase === 'locate') return locateClick(cPos(e));
-  if (!canBuild() || !editable()) return;
+  if (!canBuild()) {
+    // The board is locked while the briefing talks; say so instead of silently ignoring the click.
+    if (S.phase === 'build' && !bites.open) {
+      const cur = bites.list[bites.i];
+      setStatus(cur && cur.ask ? 'Answer the question in the briefing first.' : 'Read the briefing first: press NEXT → there.', 'warn');
+    }
+    return;
+  }
+  if (!editable()) return;
   const p = cPos(e);
 
   const hs = hitSensor(p.x, p.y);
@@ -811,7 +827,7 @@ canvas.addEventListener('click', e => {
 
   // Place new sensor
   if (!hn && S.budget > 0) {
-    const ns = { id: S.nextId++, x: p.x, y: p.y };
+    const ns = { id: S.sensors.length, x: p.x, y: p.y };
     S.sensors.push(ns);
     S.conns.set(ns.id, new Set());
     S.budget--;
@@ -824,35 +840,62 @@ canvas.addEventListener('click', e => {
   }
 
   if (!hn && S.budget === 0 && !hs) {
-    setStatus('No sensors left. Right-click a sensor to remove it, or RESET.', 'warn');
+    setStatus('No sensors left. Right-click (or long-press) a sensor to remove it, or RESET.', 'warn');
   }
 
   S.selId = null;
   render();
 });
 
+// Remove a sensor and renumber the rest, so S1..Sk always match the bit positions 1..k
+// (the bits in the log and the dots under each node follow sensor order).
+function removeSensor(hs) {
+  const conns = new Map(), sel = S.selId, moved = [];
+  S.sensors = S.sensors.filter(s => s !== hs).sort((a, b) => a.id - b.id);
+  S.selId = null;
+  S.sensors.forEach((s, i) => {
+    conns.set(i, S.conns.get(s.id));
+    if (sel === s.id) S.selId = i;
+    if (s.id !== i) moved.push(`S${s.id + 1} is now S${i + 1}`);
+    s.id = i;
+  });
+  S.conns = conns;
+  S.budget++;
+  updateUI();
+  setStatus(`Removed S${hs.id + 1}.` + (moved.length ? ` ${moved.join(', ')}.` : ''), 'info');
+  render();
+}
+
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
   if (!canBuild() || !editable()) return;
   const p = cPos(e);
   const hs = hitSensor(p.x, p.y);
-  if (!hs) return;
-  S.sensors = S.sensors.filter(s => s.id !== hs.id);
-  S.conns.delete(hs.id);
-  S.budget++;
-  if (S.selId === hs.id) S.selId = null;
-  updateUI();
-  setStatus(`Removed S${hs.id+1}.`, 'info');
-  render();
+  if (hs) removeSensor(hs);
 });
 
-// Touch support
+// Touch support: a tap is a click; a long press on a sensor removes it (touch has no right-click).
+const LONG_PRESS = 550;
+let press = null;   // { x, y, timer, fired }
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  canvas.dispatchEvent(new MouseEvent('click', {
-    clientX: e.touches[0].clientX, clientY: e.touches[0].clientY
-  }));
+  const t = e.touches[0];
+  const at = { clientX: t.clientX, clientY: t.clientY };
+  if (press) clearTimeout(press.timer);
+  press = { ...at, fired: false, timer: setTimeout(() => {
+    if (!press || !hitSensor(cPos(at).x, cPos(at).y)) return;   // long press on empty space = ordinary tap
+    press.fired = true;
+    canvas.dispatchEvent(new MouseEvent('contextmenu', { ...at, cancelable: true }));
+  }, LONG_PRESS) };
 }, { passive: false });
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (!press) return;
+  clearTimeout(press.timer);
+  if (!press.fired) canvas.dispatchEvent(new MouseEvent('click', { clientX: press.clientX, clientY: press.clientY }));
+  press = null;
+}, { passive: false });
+canvas.addEventListener('touchcancel', () => { if (press) clearTimeout(press.timer); press = null; });
 
 // ── Test logic ────────────────────────────────────────────────────────────────
 function runTest() {
@@ -929,10 +972,11 @@ function finish() {
     startLoop();
   } else {
     QEC.ui.fx.good(el('gc'));
-    // Core levels: before moving on, USE the wiring — read a glitch off the alarm pattern alone.
-    if (!lv.challenge) startLocate();
-    else setStatus('✓ Every node rings its own alarm.', 'success');
-    bites.notify('valid');   // challenges: that was the last bite, so the level completes
+    setStatus('✓ Every node rings its own alarm.', 'success');
+    startLoop();   // success pulse until LOCATE (or the level end) takes over
+    // Core levels: before moving on, USE the wiring. The LOCATE bite starts it (see LOCATE).
+    // Challenges: 'valid' was the last bite, so the level completes.
+    bites.notify('valid');
   }
   updateUI();
 }
@@ -941,6 +985,7 @@ function finish() {
 const sensorList = ids => ids.length ? ids.map(id => `S${id + 1}`).join(' + ') : 'no sensor at all';
 
 function startLocate() {
+  if (S.phase !== 'done' || S.collision) return;   // only after a wiring passed TEST
   const order = S.nodes.map(n => n.id);
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
   S.phase = 'locate';
@@ -991,6 +1036,7 @@ function locateClick(p) {
 function levelComplete() {
   const i = S.lvIdx, lv = LEVELS[i];
   S.phase = 'done';
+  S.complete = true;
   setPhaseLabel('DONE');
   chapter.complete(i);
   const toCh2 = { label: 'CHAPTER 2 →', onClick: () => (location.href = 'ch2-qubit-errors.html') };

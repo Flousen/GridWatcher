@@ -181,10 +181,18 @@
   // Optional `core: n`: only the first n levels make the chapter done; the levels after them are
   // optional extras whose chips stay hidden until reached (Chapter 1's challenges).
   QEC.ui.chapter = function ({ id, el, levels, start, core = levels.length }) {
-    let current = Math.min(QEC.progress.level(id), core - 1);
+    // A chapter marked done has reached at least its core count, even if no level was stored
+    // (Chapter 1 before it had levels saved only { done: true }).
+    const reachedLevel = () => {
+      const lv = QEC.progress.level(id);
+      return QEC.progress.isDone(id) ? Math.max(lv, core) : lv;
+    };
+    // Resume at the last core level; a player who already solved an extra resumes at the next extra.
+    const r0 = reachedLevel();
+    let current = r0 > core ? Math.min(r0, levels.length - 1) : Math.min(r0, core - 1);
 
     function render() {
-      const reached = QEC.progress.level(id);
+      const reached = reachedLevel();
       const allDone = QEC.progress.isDone(id);
       el.innerHTML = '';
       levels.forEach((name, i) => {
