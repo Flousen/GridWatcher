@@ -8,7 +8,7 @@ Learn quantum error correction by playing. Six short browser chapters, one idea 
 
 | # | Chapter | The one idea | You play… |
 |---|---------|--------------|-----------|
-| 1 | Glitch Puzzle | A *syndrome* pinpoints an error without reading the data | Wire sensors so every node has a unique alarm pattern (Hamming codes), then use your wiring to locate glitches from the alarm alone |
+| 1 | Glitch Puzzle | A *syndrome* pinpoints an error without reading the data | Learn the controls step by step, wire sensors so every node has a unique alarm pattern (Hamming codes), say how many nodes three sensors can tell apart, and use each wiring to locate glitches from the alarm alone |
 | 2 | Two Kinds of Glitch | Qubits suffer bit flips (X), phase flips (Z) and both (Y) — and can't be peeked at | Predict what Z does to \|0⟩; undo glitches on a qubit arrow, where only one-move fixes count; measure, then try (and fail) to undo the collapse |
 | 3 | Ask, Don't Look | Parity checks locate errors; a code's *distance* limits how many | Fix hidden errors in the repetition code using only the checkers; then pick the smallest code that survives a burst of 1–3 glitches |
 | 4 | Chains | On a grid, errors form chains and checks only see their ends; a decoder bets on the shortest chain | Decode X glitches on the Z-checks of a distance-5 surface code; predict, then fix a chain by the *other* route and see the loop |

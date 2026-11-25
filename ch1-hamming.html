@@ -6,186 +6,15 @@
 <title>Glitch Puzzle</title>
 <link rel="stylesheet" href="css/theme.css">
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
+.board { user-select: none; }
+canvas { cursor: crosshair; touch-action: none; }
+.bite-actions { flex-wrap: wrap; }
+.bite-actions .btn { white-space: nowrap; }   /* CHAPTER 2 → and CHALLENGES → side by side */
 
-body {
-  background: #050510;
-  color: #fff;
-  font-family: 'Courier New', monospace;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-height: 100vh;
-  padding: 16px 16px 30px;
-  user-select: none;
-}
-
-.ch-nav { width: min(700px, 100%); display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-
-.takeaway {
-  margin-top: 10px;
-  max-width: 700px;
-  font-size: 0.82em;
-  line-height: 1.6;
-  color: #dde6ee;
-  border-left: 2px solid #00ff88;
-  background: rgba(0,255,136,0.05);
-  padding: 8px 12px;
-  display: none;
-}
-.takeaway b { color: #00ff88; }
-
-#btn-chapter {
-  background: #330066;
-  color: #cc88ff;
-  border: 1px solid #6600cc;
-  display: none;
-  text-decoration: none;
-}
-
-/* Optional extra puzzles — deliberately quieter than CHAPTER 2. */
-#btn-challenge {
-  background: rgba(255,255,255,0.04);
-  color: #8fa1b3;
-  border: 1px solid #566a7e;
-  display: none;
-}
-#btn-challenge:hover { background: rgba(255,255,255,0.08); color: #ccddee; }
-
-h1 {
-  color: #00ffff;
-  font-size: 1.7em;
-  text-shadow: 0 0 24px #00ffff88, 0 0 4px #00ffff;
-  letter-spacing: 4px;
-  margin-bottom: 2px;
-}
-
-.subtitle {
-  color: #4f93ab;
-  font-size: 0.72em;
-  letter-spacing: 3px;
-  margin-bottom: 14px;
-}
-
-#hud {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.hud-chip {
-  background: rgba(0,255,255,0.04);
-  border: 1px solid rgba(0,255,255,0.18);
-  border-radius: 5px;
-  padding: 5px 14px;
-  font-size: 0.78em;
-  color: #66aacc;
-  letter-spacing: 1px;
-}
-.hud-chip b { color: #00eeff; }
-
-#level-title {
-  color: #9900ff;
-  font-size: 0.78em;
-  letter-spacing: 2px;
-  text-shadow: 0 0 10px #9900ff88;
-}
-
-canvas {
-  display: block;
-  border: 1px solid rgba(0,255,255,0.14);
-  border-radius: 10px;
-  background: #050510;
-  cursor: crosshair;
-  touch-action: none;
-}
-
-#controls {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-button {
-  padding: 9px 22px;
-  border: none;
-  border-radius: 6px;
-  font-family: 'Courier New', monospace;
-  font-size: 0.82em;
-  font-weight: bold;
-  letter-spacing: 2px;
-  cursor: pointer;
-  transition: all 0.18s;
-  text-transform: uppercase;
-  outline: none;
-}
-
-#btn-test {
-  background: #006633;
-  color: #00ff88;
-  border: 1px solid #009944;
-}
-#btn-test:hover:not(:disabled) {
-  background: #008844;
-  box-shadow: 0 0 18px #00ff8866;
-  color: #00ffaa;
-}
-#btn-test:disabled { opacity: 0.35; cursor: not-allowed; }
-
-#btn-reset {
-  background: rgba(255,255,255,0.04);
-  color: #8fa1b3;
-  border: 1px solid #566a7e;
-}
-#btn-reset:hover { background: rgba(255,255,255,0.08); color: #99aabb; }
-
-#btn-next {
-  background: #330066;
-  color: #cc88ff;
-  border: 1px solid #6600cc;
-  display: none;
-}
-#btn-next:hover {
-  background: #440088;
-  box-shadow: 0 0 18px #9900ff66;
-  color: #dd99ff;
-}
-
-#status-bar {
-  margin-top: 10px;
-  font-size: 0.82em;
-  color: #8fa1b3;
-  text-align: center;
-  min-height: 22px;
-  letter-spacing: 1px;
-  transition: color 0.3s;
-  max-width: 700px;
-}
-#status-bar.success { color: #00ff88; text-shadow: 0 0 10px #00ff8888; }
-#status-bar.error   { color: #ff4444; text-shadow: 0 0 10px #ff000088; }
-#status-bar.info    { color: #22ccee; }
-#status-bar.warn    { color: #ffaa00; }
-
-#log-wrap {
-  margin-top: 14px;
-  width: min(700px, 96vw);
-}
-
-#log-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 4px;
-  margin-bottom: 6px;
-}
-#log-label { color: #7e92a6; font-size: 0.72em; letter-spacing: 2px; }
-#legend { color: #7e92a6; font-size: 0.68em; }
-
+/* Alarm pattern log: one row per node after TEST */
+#log-wrap { margin-top: 12px; width: min(700px, 100%); }
+#log-wrap:has(#log-entries:empty) { display: none; }   /* shown from the first TEST on */
+#log-label { color: #7e92a6; font-size: 0.72em; letter-spacing: 2px; margin: 0 4px 6px; }
 #log-entries {
   background: rgba(0,0,0,0.45);
   border: 1px solid rgba(0,255,255,0.08);
@@ -194,11 +23,11 @@ button {
   max-height: 180px;
   overflow-y: auto;
   min-height: 44px;
+  scrollbar-color: #334455 transparent;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-
 .log-row {
   display: flex;
   align-items: center;
@@ -212,135 +41,54 @@ button {
   from { opacity: 0; transform: translateX(-8px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-
 .log-row .nid  { color: #00aacc; font-weight: bold; min-width: 64px; }
 .log-row .pat  { color: #00ffcc; background: rgba(0,200,150,0.08); border: 1px solid rgba(0,200,150,0.25); border-radius: 4px; padding: 2px 10px; font-size: 0.92em; flex: 1; }
+.log-row .bits { color: #8fa1b3; letter-spacing: 2px; }
 .log-row.empty .pat  { color: #e08080; border-color: rgba(255,80,80,0.25); background: rgba(255,0,0,0.05); }
 .log-row.collide .nid { color: #ff4444; }
 .log-row.collide .pat { color: #ff6666; border-color: rgba(255,80,80,0.4); background: rgba(255,0,0,0.1); }
-
-.hint-bar {
-  margin-top: 10px;
-  font-size: 0.76em;
-  color: #8fa1b3;
-  text-align: center;
-  letter-spacing: 1px;
-  max-width: 700px;
-}
-
-
-details#concept-panel {
-  background: rgba(0,204,255,0.03);
-  border: 1px solid rgba(0,204,255,0.1);
-  border-radius: 8px;
-  margin-bottom: 12px;
-  width: min(700px, 96vw);
-}
-details#concept-panel summary {
-  padding: 8px 18px;
-  cursor: pointer;
-  color: #2ab6d8;
-  font-size: 0.78em;
-  letter-spacing: 2px;
-  list-style: none;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-details#concept-panel summary::-webkit-details-marker { display: none; }
-details#concept-panel summary::before {
-  content: '▶';
-  font-size: 0.8em;
-  transition: transform 0.2s;
-  color: #2b9fc4;
-  display: inline-block;
-}
-details#concept-panel[open] summary::before { transform: rotate(90deg); }
-.concept-body {
-  padding: 0 18px 12px;
-  font-size: 0.78em;
-  color: #b3c2d1;
-  line-height: 1.9;
-}
-.concept-body b { color: #2ab6d8; }
-.concept-level-intro {
-  color: #c3d1de;
-  border-left: 2px solid rgba(0,204,255,0.2);
-  padding-left: 10px;
-  margin-bottom: 8px;
-}
-.concept-divider {
-  border: none;
-  border-top: 1px solid rgba(0,204,255,0.08);
-  margin: 8px 0;
-}
-.concept-body .key {
-  background: rgba(0,200,255,0.1);
-  border: 1px solid rgba(0,200,255,0.25);
-  border-radius: 3px;
-  padding: 1px 6px;
-  color: #00aacc;
-}
-
 </style>
 </head>
 <body>
 
-<nav class="ch-nav"><a class="back" href="index.html">← MAP</a><span class="eyebrow">CHAPTER 1 · CLASSICAL WARM-UP</span></nav>
-<h1>GRID WATCHER</h1>
-<div class="subtitle">// THE GLITCH PUZZLE //</div>
+<header class="topbar">
+  <a class="back" href="index.html">← MAP</a>
+  <div><div class="eyebrow">CHAPTER 1 · CLASSICAL WARM-UP</div><h1>GLITCH PUZZLE</h1></div>
+  <div class="levels" id="levels"></div>
+</header>
 
-<details id="concept-panel" open>
-  <summary>HOW IT WORKS</summary>
-  <div class="concept-body">
-    <div id="concept-level-text" class="concept-level-intro"></div>
-    <div class="concept-divider"></div>
-    <b>CONTROLS</b> &nbsp;—&nbsp;
-    <b>CLICK</b> empty space → place <span style="color:#bb44ff">Sensor</span> (diamond) &nbsp;|&nbsp;
-    <b>CLICK</b> Sensor to select it (glows yellow), then <b>CLICK</b> any <span style="color:#00ccff">Node</span> to connect — click again to disconnect &nbsp;|&nbsp;
-    <b style="color:#ffee00">One Sensor can link to multiple Nodes</b> &nbsp;|&nbsp;
-    <span class="key">RIGHT-CLICK</span> Sensor → remove it &nbsp;|&nbsp;
-    <b>TEST</b> → run the simulation
-  </div>
-</details>
-
-<div id="hud">
-  <div class="hud-chip"><span id="hl-kind">LEVEL</span> <b id="hl-num">1</b></div>
-  <div class="hud-chip">NODES <b id="hl-nodes">3</b></div>
-  <div class="hud-chip">SENSORS LEFT <b id="hl-budget">2</b></div>
-  <div class="hud-chip" id="level-title">BINARY BASICS</div>
-  <div class="hud-chip" id="hl-phase">BUILD</div>
-</div>
-
-<canvas id="gc" width="700" height="460"></canvas>
-
-<div id="controls">
-  <button id="btn-reset">↺ RESET</button>
-  <button id="btn-test">▶ TEST</button>
-  <button id="btn-next">NEXT LEVEL →</button>
-  <button id="btn-chapter" onclick="location.href='ch2-qubit-errors.html'">CHAPTER 2 →</button>
-  <button id="btn-challenge">CHALLENGES →</button>
-</div>
-
-<div id="status-bar" class="info">Place Sensors, connect them to Data Nodes, then hit TEST.</div>
-<div class="takeaway" id="takeaway"></div>
-
-
-<div id="log-wrap">
-  <div id="log-header">
-    <span id="log-label">// ALARM PATTERN LOG //</span>
-    <span id="legend"></span>
-  </div>
-  <div id="log-entries"></div>
-</div>
-
-<div class="hint-bar" id="hint-bar"></div>
+<main class="stage">
+  <section class="board">
+    <div class="hud">
+      <div class="chip">NODES <b id="hl-nodes">3</b></div>
+      <div class="chip">SENSORS LEFT <b id="hl-budget">2</b></div>
+      <div class="chip" id="hl-phase">BUILD</div>
+    </div>
+    <canvas id="gc" width="700" height="460"></canvas>
+    <div class="controls">
+      <button class="btn" id="btn-reset">↺ RESET</button>
+      <button class="btn go" id="btn-test">▶ TEST</button>
+    </div>
+    <div class="legend">
+      <span>click empty space = <b style="color:var(--purple)">sensor</b></span>
+      <span>click a sensor, then nodes = wire / unwire</span>
+      <span>right-click a sensor = remove</span>
+    </div>
+    <div class="status info" id="status"></div>
+    <div id="log-wrap">
+      <div id="log-label">// ALARM PATTERN LOG //</div>
+      <div id="log-entries"></div>
+    </div>
+  </section>
+  <aside class="bites" id="bites"></aside>
+</main>
 
 <script src="js/core/hamming.js"></script>
 <script src="js/ui/progress.js"></script>
 <script src="js/ui/canvas.js"></script>
+<script src="js/ui/bites.js"></script>
 <script>
+'use strict';
 // ── Canvas setup ─────────────────────────────────────────────────────────────
 const canvas = document.getElementById('gc');
 const ctx = canvas.getContext('2d');
@@ -381,14 +129,33 @@ function pts_circle(n, cx, cy, r, startAngle = -Math.PI/2) {
   });
 }
 
+// Bites: what the briefing says, one piece at a time (js/ui/bites.js). Events the game reports:
+//   place / select / connect – level 1 controls, step by step
+//   valid   – TEST passed: every node rings its own alarm pattern
+//   located – the LOCATE step after a valid wiring is done (core levels only)
+// `tip` comes up when TEST finds two nodes with the same pattern; `done` closes the level.
+// The word "syndrome" appears only after level 1 is solved: experience first, name second.
+const skipIf = (evt, already) => () => { if (already()) setTimeout(() => bites.notify(evt), 0); };
+const LOCATE = { t: 'Now use it. A node glitched and the alarm rang, but the node stays hidden. Click the one that glitched.', wait: 'located', hint: 'click the glitched node' };
+
 const LEVELS = [
   {
     id: 1,
     title: 'BINARY BASICS',
-    hint: 'TIP: Each Sensor can connect to multiple Nodes. 2 sensors give 3 patterns: S1 alone, S2 alone, or S1+S2 together.',
-    explain: 'You monitor a network of <b>Data Nodes</b> — any of them can glitch (malfunction). When a node glitches, every <b>Sensor wired to it</b> fires an alarm. Your goal: wire Sensors so each Node triggers a <b>unique combination</b> of alarms. That way, when alarms ring, you know exactly which node failed — no ambiguity. With 2 Sensors there are <b>3 possible non-empty patterns</b>: {S1}, {S2}, and {S1+S2}. Assign one to each of the 3 Nodes.',
-    takeaway: 'That alarm pattern has a name: the <b>syndrome</b>. It tells you <em>where</em> the glitch is, without reading the data itself. Hold on to that idea — it is the heart of quantum error correction.',
     sensorBudget: 2,
+    bites: [
+      'Three <b>data nodes</b>: A, B and C. Any one of them can <b>glitch</b>, and you can\'t see which.',
+      { t: 'But you can place <b>sensors</b>. Click an empty spot on the board.', wait: 'place', hint: 'click empty space' },
+      { t: 'It glows yellow: the sensor is <b>selected</b>. Click a node to wire it to the sensor.', wait: 'connect', hint: 'click a node' },
+      'If that node glitches now, the sensor rings. Your goal: <b>every node rings a different set of sensors</b>. Then the alarm alone tells you which node glitched.',
+      { t: 'Place your second sensor. A new sensor is selected right away.', wait: 'place', hint: 'click empty space',
+        onShow: skipIf('place', () => S.sensors.length >= 2) },
+      { t: 'To rewire an older sensor, click it first so it turns yellow. Try it.', wait: 'select', hint: 'click the other sensor' },
+      { t: 'A sensor can watch <b>several</b> nodes; click a wired node again to cut the wire. Wire both sensors, then press <b>TEST</b>: it glitches each node in turn.', wait: 'valid', hint: 'wire, then press TEST' },
+      LOCATE,
+    ],
+    tip: 'Two sensors can ring in three ways: S1 alone, S2 alone, or both. Give each node a different one.',
+    done: '✓ <b>Level complete.</b> You found the glitch from the alarm alone. That alarm pattern has a name: the <b>syndrome</b>. It tells you <em>where</em> the glitch is without reading the data. Hold on to it: it is the heart of quantum error correction.',
     nodes: (() => {
       const lab = ['A','B','C'];
       const ps = [{ x:350, y:110 }, { x:200, y:360 }, { x:500, y:360 }];
@@ -398,9 +165,18 @@ const LEVELS = [
   {
     id: 2,
     title: 'PENTAGON PROTOCOL',
-    hint: 'TIP: 3 sensors → up to 7 unique patterns. You need 5 of them.',
-    explain: '3 Sensors can produce up to <b>7 unique patterns</b> (2³ − 1 = 7 non-empty subsets). Think of each node\'s pattern as a binary number — which sensors fire (1) or stay silent (0). For example, only S1 fires → pattern <b>100</b>; S1 and S3 fire → pattern <b>101</b>. You need 5 distinct patterns for 5 Nodes — many valid wiring plans exist.',
     sensorBudget: 3,
+    bites: [
+      { t: 'Five nodes, and now <b>three</b> sensors. Two sensors told 3 nodes apart. How many can three sensors tell apart at most?',
+        ask: ['4', '6', '7', '8'], answer: 2, kind: 'check', id: 'max-3-sensors',
+        reply: (i, ok) => (ok ? '✓ Right: <b>7</b>.' : '✗ Not quite: <b>7</b>.')
+          + ' Each sensor rings or stays silent, so there are 2 × 2 × 2 = 8 syndromes. "All silent" points at no node, which leaves 7.' },
+      'Write a syndrome as bits, one per sensor: 1 = rings, 0 = silent. Only S1 rings: <b>100</b>. S1 and S3: <b>101</b>. After TEST, the dots under each node show the same bits.',
+      { t: 'You need 5 different syndromes, one per node. Wire, then TEST.', wait: 'valid', hint: 'wire, then press TEST' },
+      LOCATE,
+    ],
+    tip: 'Three sensors give 100, 010, 001, 110, 101, 011 and 111. Give each node a different one.',
+    done: '✓ <b>Level complete.</b> Many wirings work: any 5 of the 7 syndromes will do.',
     nodes: (() => {
       const lab = ['A','B','C','D','E'];
       return pts_circle(5, 350, 230, 165).map((p,i) => ({ id:i, ...p, label:lab[i] }));
@@ -409,10 +185,15 @@ const LEVELS = [
   {
     id: 3,
     title: 'HAMMING GRID',
-    hint: 'TIP: This IS the Hamming Code. Assign each node one of the 7 binary patterns from 001 to 111.',
-    explain: '7 Nodes, 3 Sensors, 7 patterns — this puzzle is the <b>Hamming(7,4) error-correcting code</b>! In the real code, each bit position is labelled with a unique 3-bit binary number (001 through 111). When a bit flips (glitches), the sensors whose patterns cover that position all fire — and the <em>combination</em> of alarm signals pinpoints exactly which bit failed. This is the mathematical foundation of reliable data storage and memory correction in every computer.',
-    takeaway: 'You just built the <b>Hamming(7,4) code</b>: 3 checks pinpoint any single glitch among 7 nodes. <b>Chapter 1 complete</b> — on to <b>qubits</b>, where glitches come in two flavours. Want more of this puzzle first? Three optional <b>challenges</b> are one click away.',
     sensorBudget: 3,
+    bites: [
+      { t: 'Seven nodes, three sensors, and three sensors make exactly 7 syndromes. So <b>every</b> syndrome must be used, each one once. Wire, then TEST.', wait: 'valid', hint: 'wire, then press TEST' },
+      'You just built the <b>Hamming(7,4) code</b> (Richard Hamming, 1950). Three checks find any single glitch among 7 bits. In the real code, 4 of the bits carry data and 3 are extra check bits: hence (7,4).',
+      'Hamming\'s own recipe: number the bits 001 to 111 and wire each sensor to the bits with a 1 in its place. Then the syndrome <em>is</em> the number of the broken bit.',
+      LOCATE,
+    ],
+    tip: 'Count in binary: give the nodes 001, 010, 011 … 111 and wire each sensor to the nodes with a 1 in its place.',
+    done: '✓ <b>Chapter complete.</b> Three checks pinpoint any single glitch among seven bits. Next: <b>qubits</b>, where glitches come in two kinds. Want more of this puzzle first? The challenges are optional.',
     nodes: (() => {
       const lab = ['A','B','C','D','E','F','G'];
       return pts_circle(7, 350, 228, 170).map((p,i) => ({ id:i, ...p, label:lab[i] }));
@@ -422,9 +203,12 @@ const LEVELS = [
     id: 4,
     challenge: true,
     title: 'QUAD SIGNAL',
-    hint: 'TIP: 4 sensors give 15 patterns. You need 9 — pick any 9 distinct combinations.',
-    explain: '<b>Optional challenge.</b> With 4 Sensors, 2⁴ − 1 = <b>15 unique patterns</b> are possible. You only need 9 of them, so there\'s room to experiment. Think of each sensor as a <b>bit position</b> (S1=bit 1, S2=bit 2, …). Each node needs a unique 4-bit combination — just pick any 9 of the 15.',
     sensorBudget: 4,
+    bites: [
+      { t: '<b>Optional challenge.</b> Four sensors make 2⁴ − 1 = <b>15</b> syndromes, now 4 bits long. You need 9 of them. Wire, then TEST.', wait: 'valid', hint: 'wire, then press TEST' },
+    ],
+    tip: 'Pick any 9 different 4-bit syndromes (not 0000) and give one to each node.',
+    done: '✓ <b>Challenge solved.</b>',
     nodes: (() => {
       const lab = 'ABCDEFGHI'.split('');
       return pts_circle(9, 350, 225, 170).map((p, i) => ({ id: i, ...p, label: lab[i] }));
@@ -434,9 +218,12 @@ const LEVELS = [
     id: 5,
     challenge: true,
     title: 'DENSE MESH',
-    hint: 'TIP: 12 nodes, 15 available patterns — only 3 can go unused. Map them all out before wiring.',
-    explain: '12 nodes with a 4-sensor budget means <b>only 3 of the 15 patterns can go unused</b>. The two-ring layout adds visual distance but not extra patterns — you still need 12 distinct 4-bit combinations spread across all nodes without any pair sharing a pattern.',
     sensorBudget: 4,
+    bites: [
+      { t: '12 nodes and 15 syndromes: only 3 may go unused. Plan before you wire, then TEST.', wait: 'valid', hint: 'wire, then press TEST' },
+    ],
+    tip: 'Write down 12 of the syndromes 0001 … 1111 first, then wire.',
+    done: '✓ <b>Challenge solved.</b>',
     nodes: (() => {
       const lab = 'ABCDEFGHIJKL'.split('');
       const inner = pts_circle(5, 350, 225, 90);
@@ -448,9 +235,12 @@ const LEVELS = [
     id: 6,
     challenge: true,
     title: 'EXTENDED HAMMING',
-    hint: 'TIP: All 15 patterns must be used — assign each node a unique 4-bit code from 0001 to 1111.',
-    explain: '15 nodes, 4 sensors, every pattern used — this is the <b>Hamming(15,11) code</b>, the 4-bit generalization of Level 3. In real memory systems it locates and corrects any single-bit error across 11 data bits using just 4 parity checks. Assign each node the unique 4-bit binary pattern matching its position: 0001, 0010, 0011 … 1111.',
     sensorBudget: 4,
+    bites: [
+      { t: '15 nodes, 4 sensors: <b>every</b> syndrome from 0001 to 1111, each once. Wire, then TEST.', wait: 'valid', hint: 'wire, then press TEST' },
+    ],
+    tip: 'Number the nodes 0001 to 1111 and wire each sensor to the nodes with a 1 in its place.',
+    done: '✓ <b>Every challenge solved.</b> That was the <b>Hamming(15,11) code</b>: 4 checks guard 11 data bits and find any single glitch among all 15.',
     nodes: (() => {
       const lab = 'ABCDEFGHIJKLMNO'.split('');
       const inner = pts_circle(5, 350, 225, 92);
@@ -459,19 +249,24 @@ const LEVELS = [
     })(),
   },
 ];
+const CORE_LEVELS = LEVELS.filter(l => !l.challenge).length;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let S = {};
+const bites = new QEC.ui.Bites(document.getElementById('bites'));
+bites.logAs = 'ch1';
 
-function initLevel(idx) {
+function startLevel(idx) {
   const lv = LEVELS[idx];
   S = {
     lvIdx:    idx,
-    phase:    'build',   // 'build' | 'testing' | 'done'
+    phase:    'build',   // 'build' | 'testing' | 'locate' | 'done'
     nodes:    lv.nodes.map(n => ({ ...n })),
     sensors:  [],
     conns:    new Map(), // sensorId → Set<nodeId>
     budget:   lv.sensorBudget,
+    // Hamming(15,11) needs 8 wires per sensor; the old flat cap of 4 made the last challenges unsolvable.
+    maxConn:  Math.max(4, Math.ceil(lv.nodes.length / 2)),
     selId:    null,      // selected sensor id
     nextId:   0,
     testAnim: null,      // { nodeId, triggered: [] }
@@ -480,39 +275,46 @@ function initLevel(idx) {
     successT: 0,
   };
   setPhaseLabel('BUILD');
-  updateHUD();
-  setStatus('Place Sensors, connect them to Data Nodes, then hit TEST.', 'info');
+  setStatus('', 'info');
   clearLog();
-  el('btn-next').style.display = 'none';
-  el('btn-chapter').style.display = 'none';
-  el('btn-challenge').style.display = 'none';
-  el('btn-next').textContent = lv.challenge ? 'NEXT CHALLENGE →' : 'NEXT LEVEL →';
-  el('takeaway').style.display = 'none';
-  el('btn-test').disabled = false;
-  el('hint-bar').textContent = lv.hint;
-  el('level-title').textContent = lv.title;
-  el('concept-level-text').innerHTML = lv.explain;
-  document.getElementById('concept-panel').open = (idx === 0);
-  render();
+  bites.play(lv.bites, levelComplete);
+  updateUI();
+  stopLoop();   // also draws the fresh board
 }
+
+// RESET clears the wiring; the briefing stays where it is.
+function resetWiring() {
+  if (!canBuild()) return;
+  const lv = LEVELS[S.lvIdx];
+  Object.assign(S, { phase: 'build', sensors: [], conns: new Map(), budget: lv.sensorBudget, selId: null, nextId: 0, results: [], collision: null });
+  stopLoop();
+  clearLog();
+  setPhaseLabel('BUILD');
+  setStatus('Wiring cleared.', 'info');
+  updateUI();
+}
+
+// Inputs are live only while a bite waits for the player (or all bites are read), as in every chapter.
+// TEST also waits until the briefing asks for it, so the level-1 walkthrough can't be skipped by accident.
+const canBuild = () => bites.open && (S.phase === 'build' || (S.phase === 'done' && !!S.collision));
+const canTest  = () => canBuild() && (bites.done || bites.waiting === 'valid');
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
 const el = id => document.getElementById(id);
 
-const CORE_LEVELS = LEVELS.filter(l => !l.challenge).length;
-
-function updateHUD() {
-  const lv = LEVELS[S.lvIdx];
-  el('hl-kind').textContent  = lv.challenge ? 'CHALLENGE' : 'LEVEL';
-  el('hl-num').textContent   = lv.challenge ? lv.id - CORE_LEVELS : lv.id;
+function updateUI() {
+  if (!S.nodes) return;
   el('hl-nodes').textContent  = S.nodes.length;
   el('hl-budget').textContent = S.budget;
+  el('btn-test').disabled  = !canTest();
+  el('btn-reset').disabled = !canBuild();
 }
+bites.onChange = updateUI;
 
-function setStatus(msg, cls='') {
-  const sb = el('status-bar');
+function setStatus(msg, cls = 'info') {
+  const sb = el('status');
   sb.textContent = msg;
-  sb.className = cls;
+  sb.className = 'status ' + cls;
 }
 
 function setPhaseLabel(txt) {
@@ -521,22 +323,16 @@ function setPhaseLabel(txt) {
 
 function clearLog() {
   el('log-entries').innerHTML = '';
-  el('legend').textContent = '';
 }
 
+// One row per tested node: which sensors rang, and the same as bits (S1 S2 S3 … from the left).
 function addLogRow(nodeLabel, triggeredIds, isCollide, isEmpty) {
   const row = document.createElement('div');
   row.className = 'log-row' + (isCollide ? ' collide' : isEmpty ? ' empty' : '');
   row.dataset.lbl = nodeLabel;
-
-  let patStr;
-  if (isEmpty) {
-    patStr = '∅ NO SENSORS TRIGGERED';
-  } else {
-    patStr = triggeredIds.map(id => `S${id+1}`).join(' ⊕ ') + '   [' + triggeredIds.map(i=>i+1).join('') + ']';
-  }
-
-  row.innerHTML = `<span class="nid">Node ${nodeLabel}</span><span class="pat">${patStr}</span>`;
+  const bits = [...S.sensors].sort((a, b) => a.id - b.id).map(s => (triggeredIds.includes(s.id) ? 1 : 0)).join('');
+  const patStr = isEmpty ? '∅ NO SENSOR RINGS' : triggeredIds.map(id => `S${id+1}`).join(' + ');
+  row.innerHTML = `<span class="nid">Node ${nodeLabel}</span><span class="pat">${patStr}</span><span class="bits">${bits}</span>`;
   el('log-entries').appendChild(row);
   el('log-entries').scrollTop = 9999;
 }
@@ -975,18 +771,18 @@ function editable() {
 
 canvas.addEventListener('click', e => {
   if (S.phase === 'locate') return locateClick(cPos(e));
-  if (!editable()) return;
+  if (!canBuild() || !editable()) return;
   const p = cPos(e);
 
   const hs = hitSensor(p.x, p.y);
   if (hs) {
     if (S.selId === hs.id) {
       S.selId = null;
-      setStatus('Sensor deselected.', 'info');
+      setStatus(`S${hs.id+1} deselected.`, 'info');
     } else {
       S.selId = hs.id;
-      const cc = (S.conns.get(hs.id) || new Set()).size;
-      setStatus(`S${hs.id+1} selected (${cc} connection${cc!==1?'s':''}). Now click any Data Node to connect — you can connect to multiple!`, 'info');
+      setStatus(`S${hs.id+1} selected. Click nodes to wire or unwire them.`, 'info');
+      bites.notify('select');
     }
     render(); return;
   }
@@ -998,17 +794,18 @@ canvas.addEventListener('click', e => {
     const cs = S.conns.get(sid);
     if (cs.has(hn.id)) {
       cs.delete(hn.id);
-      setStatus(`Disconnected S${sid+1} from Node ${hn.label}.`, 'info');
+      setStatus(`Cut the wire S${sid+1} – Node ${hn.label}.`, 'info');
     } else {
-      if (cs.size >= 4) { setStatus('Max 4 connections per Sensor.', 'warn'); return; }
+      if (cs.size >= S.maxConn) { setStatus(`At most ${S.maxConn} wires per sensor.`, 'warn'); return; }
       cs.add(hn.id);
-      setStatus(`Connected S${sid+1} → Node ${hn.label}. Click another Node to add more connections!`, 'info');
+      setStatus(`Wired S${sid+1} → Node ${hn.label}.`, 'info');
+      bites.notify('connect');
     }
     render(); return;
   }
 
   if (hn && S.selId === null) {
-    setStatus('Select a Sensor first (click it), then click this Node to connect them.', 'warn');
+    setStatus('Select a sensor first (click it), then click this node.', 'warn');
     render(); return;
   }
 
@@ -1019,12 +816,15 @@ canvas.addEventListener('click', e => {
     S.conns.set(ns.id, new Set());
     S.budget--;
     S.selId = ns.id;
-    updateHUD();
-    render(); return;
+    setStatus(`Placed S${ns.id+1}.`, 'info');
+    updateUI();
+    render();
+    bites.notify('place');
+    return;
   }
 
   if (!hn && S.budget === 0 && !hs) {
-    setStatus('No sensors left! Right-click a Sensor to remove it.', 'warn');
+    setStatus('No sensors left. Right-click a sensor to remove it, or RESET.', 'warn');
   }
 
   S.selId = null;
@@ -1033,7 +833,7 @@ canvas.addEventListener('click', e => {
 
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
-  if (!editable()) return;
+  if (!canBuild() || !editable()) return;
   const p = cPos(e);
   const hs = hitSensor(p.x, p.y);
   if (!hs) return;
@@ -1041,8 +841,8 @@ canvas.addEventListener('contextmenu', e => {
   S.conns.delete(hs.id);
   S.budget++;
   if (S.selId === hs.id) S.selId = null;
-  updateHUD();
-  setStatus(`Removed Sensor S${hs.id+1}.`, 'info');
+  updateUI();
+  setStatus(`Removed S${hs.id+1}.`, 'info');
   render();
 });
 
@@ -1056,9 +856,9 @@ canvas.addEventListener('touchstart', e => {
 
 // ── Test logic ────────────────────────────────────────────────────────────────
 function runTest() {
-  if (S.phase !== 'build' && !(S.phase === 'done' && S.collision)) return;
+  if (!canTest()) return;
   if (S.sensors.length === 0) {
-    setStatus('Place at least one Sensor first.', 'error'); return;
+    setStatus('Place at least one sensor first.', 'error'); return;
   }
 
   S.phase = 'testing';
@@ -1067,16 +867,16 @@ function runTest() {
   S.selId = null;
   stopLoop();
   clearLog();
-  el('btn-test').disabled = true;
-  el('btn-next').style.display = 'none';
+  updateUI();
   setPhaseLabel('TESTING');
-  setStatus('Running simulation…', 'info');
+  setStatus('Glitching each node in turn…', 'info');
   render();
 
   let i = 0;
-  const DELAY = 750;
+  const DELAY = 750, run = S;
 
   function step() {
+    if (S !== run) return;   // the player switched level mid-test
     if (i >= S.nodes.length) {
       S.testAnim = null;
       finish();
@@ -1092,7 +892,7 @@ function runTest() {
 
     const isEmpty = triggered.length === 0;
     addLogRow(node.label, triggered, false, isEmpty);
-    setStatus(`Simulating glitch on Node ${node.label}…`, 'info');
+    setStatus(`Glitch on Node ${node.label}…`, 'info');
     render();
     i++;
     setTimeout(step, DELAY);
@@ -1105,12 +905,11 @@ function runTest() {
 function finish() {
   setPhaseLabel('DONE');
   S.phase = 'done';
+  const lv = LEVELS[S.lvIdx];
 
   // Detect duplicates / isolated nodes
   const col = QEC.hamming.findCollision(S.results);
-
   S.collision = col;
-  el('btn-test').disabled = false;
 
   if (col) {
     // Mark collide rows in log
@@ -1118,21 +917,24 @@ function finish() {
     if (col.isolated) {
       const lbl = S.nodes[col.n1].label;
       rows.forEach(r => { if (r.dataset.lbl === lbl) r.classList.add('collide'); });
-      setStatus(`✗ Node ${lbl} triggers NO sensors — glitch undetectable! Rewire and TEST again.`, 'error');
-      QEC.ui.fx.bad(el('gc'));
+      setStatus(`✗ Node ${lbl} rings no sensor. Rewire and TEST again.`, 'error');
+      bites.feedback(`Node ${lbl} rings no sensor at all, so its glitch would go unnoticed. Wire it to at least one.`);
     } else {
       const l1 = S.nodes[col.n1].label, l2 = S.nodes[col.n2].label;
       rows.forEach(r => { if (r.dataset.lbl === l1 || r.dataset.lbl === l2) r.classList.add('collide'); });
-      setStatus(`✗ COLLISION — Nodes ${l1} & ${l2} share the same alarm pattern. Rewire and TEST again.`, 'error');
-      QEC.ui.fx.bad(el('gc'));
+      setStatus(`✗ Nodes ${l1} and ${l2} ring the same sensors. Rewire and TEST again.`, 'error');
+      bites.feedback(`If the alarm rings like that, was it ${l1} or ${l2}? No way to tell. ${lv.tip}`);
     }
+    QEC.ui.fx.bad(el('gc'));
     startLoop();
   } else {
     QEC.ui.fx.good(el('gc'));
     // Core levels: before moving on, USE the wiring — read a glitch off the alarm pattern alone.
-    if (!LEVELS[S.lvIdx].challenge) return startLocate();
-    levelComplete();
+    if (!lv.challenge) startLocate();
+    else setStatus('✓ Every node rings its own alarm.', 'success');
+    bites.notify('valid');   // challenges: that was the last bite, so the level completes
   }
+  updateUI();
 }
 
 // ── Locate: decode with your own syndrome table ──────────────────────────────
@@ -1144,14 +946,13 @@ function startLocate() {
   S.phase = 'locate';
   S.locate = { order, got: 0, need: 2, target: order[0], wrong: -1, flash: -1, missed: false };
   setPhaseLabel('LOCATE');
-  setStatus('✓ All patterns unique. Now use them: a node glitched and the alarm rang. Which node? Click it.', 'warn');
-  el('btn-test').disabled = true;
+  setStatus('✓ Every node rings its own alarm.', 'success');
   startLoop();
 }
 
 function locateClick(p) {
   const L = S.locate, hn = hitNode(p.x, p.y);
-  if (!hn || L.flash >= 0) return;
+  if (!hn || L.flash >= 0 || bites.waiting !== 'located') return;
   const first = !L.missed;
   const fired = QEC.hamming.alarmPattern(S.conns, L.target).triggered;
   const right = QEC.hamming.locate(S.conns, S.nodes.map(n => n.id), fired).includes(hn.id);
@@ -1160,62 +961,63 @@ function locateClick(p) {
     L.missed = true;
     L.wrong = hn.id;
     const pat = QEC.hamming.alarmPattern(S.conns, hn.id).triggered;
-    setStatus(`✗ Node ${hn.label} would ring ${sensorList(pat)} — that's not what rang. Find the node wired to every lit sensor and no dark one.`, 'error');
+    setStatus(`✗ Node ${hn.label} would ring ${sensorList(pat)}. That's not what rang.`, 'error');
+    bites.feedback('Look for the node wired to <b>every</b> ringing sensor and to <b>no</b> silent one.');
     QEC.ui.fx.nudge(el('gc'));
     return;
   }
   L.flash = hn.id;
   L.wrong = -1;
   QEC.ui.fx.good(el('gc'));
-  setStatus(`✓ Node ${hn.label}! You found it from the alarm alone — without looking at any node.`, 'success');
+  bites.feedback(null);
+  setStatus(`✓ Node ${hn.label}! Found from the alarm alone, without looking at any node.`, 'success');
   setTimeout(() => {
+    if (S.locate !== L) return;   // the player switched level meanwhile
     L.got++;
     L.flash = -1;
     L.missed = false;
-    if (L.got >= L.need) { S.phase = 'done'; S.locate = null; el('btn-test').disabled = false; return levelComplete(); }
+    if (L.got >= L.need) {
+      S.phase = 'done';
+      S.locate = null;
+      bites.notify('located');   // last bite of a core level: the level completes
+      return;
+    }
     L.target = L.order[L.got];
     setStatus('Another alarm. Which node glitched?', 'warn');
   }, 900);
 }
 
+// All bites of the level are through: the wiring passed TEST (and, in core levels, LOCATE).
 function levelComplete() {
-  setStatus('✓ ALL PATTERNS UNIQUE — Level Complete!', 'success');
-  const lv = LEVELS[S.lvIdx];
-  if (lv.takeaway) { el('takeaway').innerHTML = lv.takeaway; el('takeaway').style.display = 'block'; }
-  const lastCore = S.lvIdx === CORE_LEVELS - 1;
-  if (S.lvIdx >= CORE_LEVELS - 1) {
-    QEC.progress.markDone('ch1');
-    el('btn-chapter').style.display = 'inline-block';
-  }
-  if (lastCore) {
-    // Core chapter done: Chapter 2 is the main road, challenges are optional.
-    el('btn-challenge').style.display = 'inline-block';
-    setStatus('✓ ALL PATTERNS UNIQUE — Chapter 1 complete!', 'success');
-  } else if (S.lvIdx < LEVELS.length - 1) {
-    el('btn-next').style.display = 'inline-block';
+  const i = S.lvIdx, lv = LEVELS[i];
+  S.phase = 'done';
+  setPhaseLabel('DONE');
+  chapter.complete(i);
+  const toCh2 = { label: 'CHAPTER 2 →', onClick: () => (location.href = 'ch2-qubit-errors.html') };
+  if (i === CORE_LEVELS - 1) {
+    // Core chapter done: Chapter 2 is the main road, the challenges are optional and deliberately quiet.
+    bites.finish(lv.done, [toCh2, { label: 'CHALLENGES →', cls: '', onClick: () => chapter.go(CORE_LEVELS) }]);
+    setStatus('✓ Chapter 1 complete!', 'success');
+  } else if (i === LEVELS.length - 1) {
+    bites.finish(lv.done, [toCh2, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]);
+    setStatus('✓ Every challenge solved!', 'success');
   } else {
-    setStatus('✓ ALL PATTERNS UNIQUE — every challenge solved!', 'success');
+    bites.finish(lv.done, [{ label: lv.challenge ? 'NEXT CHALLENGE →' : 'NEXT LEVEL →', onClick: () => chapter.go(i + 1) }]);
+    setStatus(lv.challenge ? '✓ Challenge solved!' : '✓ Level complete!', 'success');
   }
+  updateUI();
   startLoop(); // pulsing success animation
 }
 
 // ── Buttons ───────────────────────────────────────────────────────────────────
 el('btn-test').addEventListener('click', runTest);
-el('btn-reset').addEventListener('click', () => {
-  stopLoop();
-  initLevel(S.lvIdx);
-});
-el('btn-next').addEventListener('click', () => {
-  stopLoop();
-  if (S.lvIdx < LEVELS.length - 1) initLevel(S.lvIdx + 1);
-});
-el('btn-challenge').addEventListener('click', () => {
-  stopLoop();
-  initLevel(CORE_LEVELS);
-});
+el('btn-reset').addEventListener('click', resetWiring);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-initLevel(0);
+// Levels 4–6 are optional challenges: only the first three make the chapter done (storage id 'ch1').
+const chapter = QEC.ui.chapter({ id: 'ch1', el: el('levels'), levels: LEVELS.map(l => l.title), start: startLevel, core: CORE_LEVELS });
+chapter.begin();
 </script>
 </body>
+
 </html>

@@ -152,7 +152,7 @@
       } else if (cur.final && this.actions) {
         for (const a of this.actions) {
           const btn = document.createElement('button');
-          btn.className = 'btn ' + (a.cls || 'next');
+          btn.className = 'btn ' + (a.cls ?? 'next');   // cls: '' = a quiet button
           btn.textContent = a.label;
           btn.onclick = a.onClick;
           row.appendChild(btn);
@@ -178,19 +178,23 @@
   // Level chips in the top bar + progress bookkeeping for one chapter.
   //   const ch = QEC.ui.chapter({ id: 'ch3', el, levels: ['3 QUBITS', ...], start: i => {...} });
   //   ch.complete(i)  // level i solved: unlock the next one (and mark the chapter done after the last)
-  QEC.ui.chapter = function ({ id, el, levels, start }) {
-    let current = Math.min(QEC.progress.level(id), levels.length - 1);
+  // Optional `core: n`: only the first n levels make the chapter done; the levels after them are
+  // optional extras whose chips stay hidden until reached (Chapter 1's challenges).
+  QEC.ui.chapter = function ({ id, el, levels, start, core = levels.length }) {
+    let current = Math.min(QEC.progress.level(id), core - 1);
 
     function render() {
       const reached = QEC.progress.level(id);
       const allDone = QEC.progress.isDone(id);
       el.innerHTML = '';
       levels.forEach((name, i) => {
+        const extra = i >= core;
+        if (extra && i > reached && i !== current) return;
         const b = document.createElement('button');
-        const done = allDone || i < reached;
+        const done = (allDone && !extra) || i < reached;
         b.className = 'lvl-chip' + (i === current ? ' current' : done ? ' done' : i <= reached ? ' open' : '');
         b.textContent = `${i + 1} ${name}`;
-        if (i <= reached || allDone) b.onclick = () => go(i);
+        if (i <= reached || (allDone && !extra)) b.onclick = () => go(i);
         el.appendChild(b);
       });
     }
@@ -203,7 +207,7 @@
 
     function complete(i) {
       QEC.progress.reachLevel(id, i + 1);
-      if (i === levels.length - 1) QEC.progress.markDone(id);
+      if (i === core - 1) QEC.progress.markDone(id);
       render();
     }
 
