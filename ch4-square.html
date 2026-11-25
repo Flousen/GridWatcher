@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>From Row to Square</title>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+#btn-glitch { color: var(--amber); border-color: #885500; }
+canvas { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="index.html">← MAP</a>
+  <div><div class="eyebrow">CHAPTER 4</div><h1>FROM ROW TO SQUARE</h1></div>
+  <div class="levels" id="levels"></div>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <div class="hud" id="hud">
+      <div class="chip"><span id="h-goal-lbl">SOLVED</span> <b id="h-goal">0/0</b></div>
+      <div class="chip">LIT <b id="h-lit">0</b></div>
+    </div>
+    <canvas id="cv" width="520" height="300"></canvas>
+    <div class="controls" id="round-controls">
+      <button class="btn" id="btn-glitch">⚡ GLITCH</button>
+      <button class="btn go" id="btn-check">✓ CHECK</button>
+      <button class="btn" id="btn-retry">↺ TRY AGAIN</button>
+      <button class="btn" id="btn-reveal">SHOW ANSWER</button>
+      <button class="btn next" id="btn-round">NEXT ROUND →</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="status info" id="status"></div>
+  </section>
+  <aside class="bites" id="bites"></aside>
+</main>
+
+<script src="js/core/rng.js"></script>
+<script src="js/core/pauli.js"></script>
+<script src="js/core/codes.js"></script>
+<script src="js/core/decoder.js"></script>
+<script src="js/core/checks.js"></script>
+<script src="js/ui/progress.js"></script>
+<script src="js/ui/canvas.js"></script>
+<script src="js/ui/bites.js"></script>
+<script src="js/ui/surface.js"></script>
+<script>
+'use strict';
+// Chapter 4 bridges Chapter 3's row of qubits to Chapter 5's 3×3 surface code, one step per level:
+//   PHASE ROW  the same checker idea, turned to phases: cyan checkers catch Z
+//   CLASH      both kinds on one row? A cyan and an orange checker may share 0 or 2 qubits, never 1
+//   BUILD      in a square, the player finds the one cyan checker that fits: all four qubits
+//   SQUARE     2×2: the smallest surface code. It spots every single glitch but cannot fix it (distance 2)
+const P = QEC.Pauli, D = QEC.decoder, K = QEC.checks;
+const { glow, noGlow, text, pointer } = QEC.ui;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const rng = QEC.makeRng(QEC.randomSeed());
+const bites = new QEC.ui.Bites($('bites'));
+bites.logAs = 'chains';   // storage id of this chapter (kept from the older CHAINS chapter, see index.html)
+const COL = QEC.ui.surface.COL;
+
+// ── Levels ─────────────────────────────────────────────────────────────────
+// Glitches come from shuffle bags, so every qubit (and in the square every kind) turns up.
+const bagRow = rng.bagInt(3);
+const bagSquare = rng.bag([0, 1, 2, 3].flatMap(q => [[q, 'X'], [q, 'Z']]));
+
+const LEVELS = [
+  {
+    name: 'PHASE ROW', kind: 'row', goal: 3, tools: ['Z'],
+    errors: () => P.on(3, [bagRow()], 'Z'),
+    bites: [
+      'Chapter 3 ended with a <span class="z">Z</span> glitch slipping past every checker. The orange checkers compare <em>bit values</em>, and a phase flip leaves those alone.',
+      'So here is a second kind: <span class="x">cyan checkers</span>. They ask two neighbours the same "are you equal?", but about the <b>phase</b> (left or right on Chapter 2\'s arrow). Lit = the phases differ. They still never learn the stored value.',
+      { t: 'A hidden <span class="z">Z</span> glitch is about to hit one qubit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Find the odd one out and click (tap) it to apply <span class="z">Z</span>. When every checker is dark, press CHECK.', wait: 'solved', hint: 'turn all checkers dark, then CHECK' },
+      'Same game as Chapter 3, turned from bits to phases. Reading the checkers and betting on the fewest flips is called <b>decoding</b>, and a program that does it is a <b>decoder</b>. Solve 3 rounds.',
+    ],
+  },
+  {
+    name: 'CLASH', kind: 'clash',
+    bites: [
+      'Cyan checkers catch <span class="z">Z</span>, orange ones catch <span class="x">X</span>. So why not put <b>both</b> on one row? Here are Chapter 3\'s two orange checkers. Below the row are two empty slots for a cyan one.',
+      { t: 'Each cyan slot asks the same two qubits as one orange checker, so it shares <b>two</b> qubits with that one and <b>one</b> qubit with the other. What will happen?',
+        ask: ['All three checkers work fine', 'Some answers turn into coin tosses', 'The cyan checker stays dark'], answer: 1, kind: 'predict', id: 'clash' },
+      { t: 'Try it: tap one of the dashed cyan slots.', wait: 'place', hint: 'tap a cyan slot below the row' },
+      'No glitch happened, yet two checkers flicker at random. Asking a checker nudges the qubits it asks, a gentle cousin of the measurement in Chapter 2. When an orange and a cyan checker share <b>exactly one</b> qubit, each time one is asked, the other\'s answer becomes a coin toss.',
+      'Now look at the pair that shares <b>two</b> qubits: steady. The two nudges cancel out.',
+      { t: 'Maybe the other slot is better? Move the cyan checker there.', wait: 'both', hint: 'tap the other cyan slot' },
+      'Same trouble, other side. The rule: an orange and a cyan checker may share <b>0 or 2</b> qubits, <b>never one</b>. On a row, every cyan checker shares just one qubit with some orange checker. There is no room.',
+    ],
+  },
+  {
+    name: 'BUILD', kind: 'build',
+    bites: [
+      'A second dimension: four qubits in a square. Think of it as two short rows of two, stood upright side by side. Each column gets its own <span class="z">orange checker</span> from Chapter 3.',
+      'The <span class="x">cyan checker</span> in the middle starts out asking the top row, q1 and q2, just like on the row before. Read the labels: it shares one qubit with <em>each</em> orange checker. Double clash.',
+      'But in a square, one checker can reach into both columns. You decide which qubits it asks.',
+      { t: 'Goal: <b>no clash</b>, and every qubit watched for <span class="z">Z</span>. How many qubits must the cyan checker ask?',
+        ask: ['Two', 'Three', 'All four'], answer: 2, kind: 'predict', id: 'cyan-size' },
+      { t: 'Tap a qubit to add it to the cyan checker, tap again to take it out.', wait: 'built', hint: 'no clash, and every qubit watched' },
+      'All four. Now it shares <b>two</b> qubits with each orange checker, so all three answers stay steady. Any smaller choice either clashes or leaves a qubit where a <span class="z">Z</span> slips by.',
+      { t: 'From here on, each checker is drawn as a <b>tile</b> that touches the qubits it asks: a half-disc for each orange checker on its column, a square for the cyan one in the middle. Same three checkers, new picture. Chapter 5 uses it too.',
+        onShow: () => { S.tiles = true; } },
+    ],
+  },
+  {
+    name: 'SQUARE', kind: 'square', goal: 4, countAll: true, tools: ['X', 'Z'],
+    errors: () => { const [q, t] = bagSquare(); return P.on(4, [q], t); },
+    bites: [
+      'The square you built. The <span class="z">orange half-discs</span> each ask their column and catch <span class="x">X</span>.',
+      'The <span class="x">cyan tile</span> asks all <b>four</b> qubits at once. It lights up when an <em>odd</em> number of them got phase-flipped, but it does not say which ones.',
+      { t: 'Before you play: can this square fix any single glitch, the way three qubits in a row could fix one?',
+        ask: ['Yes, any single glitch', 'It notices every one, but cannot always fix it', 'Some glitches slip through unseen'], answer: 1, kind: 'predict', id: 'square-fix' },
+      { t: 'Let a glitch hit: <span class="x">X</span> or <span class="z">Z</span>, on one qubit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
+      { t: 'Fix it: <b>left-click</b> = <span class="x">X</span>, <b>right-click</b> = <span class="z">Z</span>. On touch, tap to step Z → X → Y, then wait a moment. Then CHECK.', wait: 'checked', hint: 'fix it, then CHECK' },
+      'A lit orange checker points at <b>two</b> qubits, the cyan tile at <b>four</b>, and nothing on the board says which one glitched. Play 4 rounds in all.',
+    ],
+  },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let S = null, hover = -1, code = null, W = cv.width, H = cv.height;
+let G = null, QR = 28;
+const ROW_QY = 140;
+const ripples = [];
+
+function startLevel(i) {
+  const lv = LEVELS[i];
+  input.cancel();
+  S = { lv, idx: i, solved: 0, played: 0, cyan: null, tried: new Set(), coins: [0, 0, 0], coinAt: 0 };
+  layout(lv);
+  if (lv.kind === 'clash') {
+    S.phase = 'clash';
+    setStatus('No glitch here. Just checkers.', 'info');
+  } else if (lv.kind === 'build') {
+    S.phase = 'build';
+    S.cyanSet = [0, 1];   // the top row, like on the row before
+    S.tiles = false;
+    reportBuild(false);
+  } else newRound();
+  bites.play(lv.bites, () => {
+    if (lv.kind === 'clash' || lv.kind === 'build' || S.goalReached) levelDone();
+    else updateUI();
+  });
+  updateUI();
+}
+
+function layout(lv) {
+  if (lv.kind === 'square' || lv.kind === 'build') {
+    code = QEC.codes.rotatedSurfaceCode(2);
+    W = H = cv.width = cv.height = 520;
+    G = QEC.ui.surface.geometry(2, W, 230);
+    QR = 26;
+  } else {
+    code = lv.kind === 'row' ? QEC.codes.repetitionCode(3, 'X') : QEC.codes.repetitionCode(3, 'Z');
+    W = cv.width = 520;
+    H = cv.height = lv.kind === 'clash' ? 330 : 260;
+    QR = 28;
+  }
+  const legend = {
+    row: '<span><span class="sw" style="background:#00ccff;transform:rotate(45deg) scale(.8)"></span> cyan checker lit: the phases differ</span>'
+      + '<span><b style="color:var(--z-col)">Z</b> your correction</span>'
+      + '<span><b style="color:var(--red)">⚡</b> hidden glitch (shown after CHECK)</span>',
+    clash: '<span><span class="sw" style="background:#ff8822;transform:rotate(45deg) scale(.8)"></span> orange: compares bits (Chapter 3)</span>'
+      + '<span><span class="sw" style="background:#00ccff;transform:rotate(45deg) scale(.8)"></span> cyan: compares phases</span>'
+      + '<span>? = the answer is a coin toss</span>',
+    square: '<span><span class="sw" style="background:rgba(255,136,34,.5);border:1px solid #ff8822"></span> orange checker: catches <span class="x">X</span></span>'
+      + '<span><span class="sw" style="background:rgba(0,204,255,.4);border:1px solid #00ccff"></span> cyan tile: catches <span class="z">Z</span></span>'
+      + '<span>left click = <span class="x">X</span> · right click = <span class="z">Z</span> (touch: tap to step Z → X → Y, then wait)</span>',
+    build: '<span><span class="sw" style="background:#ff8822;transform:rotate(45deg) scale(.8)"></span> orange: compares bits</span>'
+      + '<span><span class="sw" style="background:#00ccff;transform:rotate(45deg) scale(.8)"></span> cyan: compares phases</span>'
+      + '<span>tap a qubit = add it to the cyan checker, or take it out</span>',
+  }[lv.kind];
+  $('legend').innerHTML = legend;
+}
+
+function newRound() {
+  input.cancel();
+  S.phase = 'ready';   // ready → hidden (glitched) → [failed ↔ hidden] → revealed
+  S.err = P.identity(code.n);
+  S.corr = P.identity(code.n);
+  S.result = null;
+  S.retried = false;
+  setStatus('All quiet. Press ⚡ GLITCH to start the round.', 'info');
+  updateUI();
+}
+
+const residual = () => P.compose(S.err, S.corr);
+const syndrome = () => D.syndrome(code, residual());
+const playing = () => S && S.phase === 'hidden' && bites.open;
+
+function glitch() {
+  if (!S || S.phase !== 'ready' || !bites.open) return;
+  S.err = S.lv.errors();
+  S.phase = 'hidden';
+  setStatus('⚡ Something glitched. Read the checkers.', 'error');
+  bites.notify('glitch');
+  updateUI();
+}
+
+// Mouse: left = X, right = Z. A level with one kind of fix applies it whichever button is used.
+function apply(q, type) {
+  if (!playing()) return;
+  const tools = S.lv.tools;
+  P.applyAt(S.corr, q, tools.includes(type) ? type : tools[0]);
+  afterFix(q);
+}
+
+// Touch: set q's correction to exactly this letter.
+function setCorr(q, letter) {
+  if (!playing()) return;
+  P.applyAt(S.corr, q, P.get(S.corr, q));   // clear
+  P.applyAt(S.corr, q, letter);
+  afterFix(q);
+}
+
+function afterFix(q) {
+  if (S.lv.kind === 'row') ripples.push({ x: rowX(q), y: ROW_QY, t0: performance.now() });
+  bites.notify('flip');
+  const lit = syndrome().filter(Boolean).length;
+  setStatus(lit ? `${lit} checker${lit > 1 ? 's' : ''} still lit.` : 'All checkers dark. Press ✓ CHECK.', lit ? 'info' : 'success');
+  updateUI();
+}
+
+// What did glitch + fix do to the stored qubit? Plain words for the square.
+function lostHow() {
+  const r = residual();
+  const bit = !P.commutes(r, code.logicalZ), phase = !P.commutes(r, code.logicalX);
+  if (P.weight(r) !== 2) return 'Glitch + your fix together flipped the stored qubit, and no check can see that.';
+  if (bit) return 'Glitch + your fix put <span class="x">X</span> on both qubits of one column, from the top edge to the bottom edge. No check sees that, yet it flips the stored bit.';
+  if (phase) return 'Glitch + your fix put <span class="z">Z</span> on one qubit in <em>each</em> column, from the left edge to the right edge. No check sees that, yet it flips the stored phase.';
+  return '';
+}
+
+function check() {
+  input.commit();
+  if (!playing()) return;
+  if (!D.isZero(syndrome())) { setStatus('Some checkers are still lit — keep going.', 'warn'); QEC.ui.fx.nudge(cv); return; }
+  S.result = D.residualStatus(code, S.err, S.corr);
+  // advance the briefing first, so feedback below lands under the new bite
+  bites.notify('checked');
+  const square = S.lv.kind === 'square';
+  if (S.result === 'ok') {
+    QEC.ui.fx.good(cv);
+    bites.notify('solved');
+    S.solved++;
+    if (P.equal(S.err, S.corr)) setStatus('✓ Fixed! The stored qubit is safe.', 'success');
+    else {
+      setStatus('✓ Fixed — though your fix missed the glitched qubit.', 'success');
+      if (square) bites.feedback('Lucky twice: your <span class="z">Z</span> missed the glitch, yet it worked. Glitch + fix put <span class="z">Z</span> on both qubits of one orange checker (green outline), and that leaves the stored qubit alone. Chapter 5 comes back to this.');
+    }
+    if (S.retried) bites.feedback('Second try worked. A real decoder gets only <b>one</b> guess per round.');
+    return endRound();
+  }
+  // Wrong fix: keep the glitch hidden and let the player try again.
+  S.phase = 'failed';
+  QEC.ui.fx.bad(cv);
+  if (square) {
+    setStatus('✗ Logical error! The checkers are dark, but the stored qubit got flipped.', 'error');
+    bites.feedback(`${lostHow()} That is a <b>logical error</b>. The board could not tell you which qubit it was. <b>↺ TRY AGAIN</b> or <b>SHOW ANSWER</b>.`);
+  } else {
+    setStatus('✗ Logical error! The checkers are dark, but glitch + your fix put Z on ALL qubits (|+++⟩ ↔ |−−−⟩).', 'error');
+    bites.feedback('Dark checkers, but the wrong fix. Remember Chapter 3: the <b>fewest</b> flips that turn every checker dark. Try again!');
+  }
+  updateUI();
+}
+
+function retry() {
+  if (S.phase !== 'failed') return;
+  input.cancel();
+  S.corr = P.identity(code.n);
+  S.result = null;
+  S.retried = true;
+  S.phase = 'hidden';
+  setStatus('Same glitch, fresh start. Read the checkers again.', 'info');
+  updateUI();
+}
+
+// The round is over: show where the glitch really was.
+function endRound() {
+  S.phase = 'revealed';
+  S.played++;
+  updateUI();
+  const count = S.lv.countAll ? S.played : S.solved;
+  // wrap up once the goal is met — but never cut off a bite the player is still reading
+  if (count >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 900); }
+}
+
+// ── CLASH ──────────────────────────────────────────────────────────────────
+const ROW = K.clashRow(3);
+const cyanCheck = () => (S.cyan === null ? null : ROW.slots[S.cyan]);
+
+function place(k) {
+  if (S.phase !== 'clash') return;
+  if (!bites.open) return lockedClick();
+  S.cyan = k;
+  S.tried.add(k);
+  const other = ROW.orange.find(o => K.clash(o, ROW.slots[k]));
+  const q = other.qubits.find(x => ROW.slots[k].qubits.includes(x));
+  setStatus(`Clash! The cyan checker and the ${k === 0 ? 'right' : 'left'} orange checker share only q${q + 1}. Their answers are coin tosses.`, 'error');
+  QEC.ui.fx.nudge(cv);
+  bites.notify('place');
+  if (S.tried.size === 2) bites.notify('both');
+  updateUI();
+}
+
+function hitSlot(p) {
+  for (let k = 0; k < ROW.slots.length; k++) {
+    if (Math.abs(p.x - gapX(k)) + Math.abs(p.y - SLOT_Y) <= 40) return k;
+  }
+  return -1;
+}
+
+// ── BUILD ──────────────────────────────────────────────────────────────────
+const SQ = K.squareBuild();
+const judge = () => K.judgeCyan(SQ, S.cyanSet);
+const qname = qs => qs.map(q => 'q' + (q + 1)).join(qs.length > 2 ? ', ' : ' and ');
+
+function toggle(q) {
+  if (S.phase !== 'build') return;
+  if (!bites.open) return lockedClick();
+  S.cyanSet = S.cyanSet.includes(q) ? S.cyanSet.filter(x => x !== q) : [...S.cyanSet, q].sort();
+  reportBuild(true);
+}
+
+function reportBuild(moved) {
+  const j = judge();
+  if (!S.cyanSet.length) setStatus('The cyan checker asks no qubit at all. Tap qubits to add them.', 'warn');
+  else if (j.clashes.length) {
+    const side = j.clashes.length === 2 ? 'both orange checkers' : `the ${j.clashes[0] === SQ.orange[0] ? 'left' : 'right'} orange checker`;
+    setStatus(`Clash with ${side}: they share exactly one qubit.`, 'error');
+  } else if (j.unwatched.length) {
+    setStatus(`No clash. But ${qname(j.unwatched)} ${j.unwatched.length > 1 ? 'have' : 'has'} no phase check: a Z there would slip by.`, 'warn');
+  } else {
+    setStatus('✓ No clash, and every qubit has a phase check.', 'success');
+    if (moved) { QEC.ui.fx.good(cv); bites.notify('built'); }
+  }
+  updateUI();
+}
+
+// ── Level end ──────────────────────────────────────────────────────────────
+function levelDone() {
+  if (S.phase === 'done') return;
+  chapter.complete(S.idx);
+  const last = chapter.isLast(S.idx);
+  const msg = {
+    0: '✓ <b>Level complete.</b> Cyan checkers catch phase flips the way orange ones catch bit flips. But now an <span class="x">X</span> glitch would slip through, the mirror image of Chapter 3. We need <b>both</b> kinds at once.',
+    1: '✓ <b>Level complete.</b> Orange and cyan checkers may share 0 or 2 qubits, never one. A row has no room for that. Next: give the qubits a second dimension.',
+    2: '✓ <b>Level complete.</b> Three checks on four qubits, and none clashes. But does the square protect a stored qubit? Let glitches decide.',
+  }[S.idx];
+  bites.finish(last
+    ? '✓ <b>Chapter complete.</b> You just played the smallest <b>surface code</b>. Two flips, a column of <span class="x">X</span> or a row of <span class="z">Z</span>, slip past every check, so its <b>distance</b> is 2: it notices any single glitch but cannot fix it. Chapter 3 told you what fixing one glitch takes: distance 3. Next: the square grows to 3 × 3.'
+    : msg,
+    last
+      ? [{ label: 'CHAPTER 5 →', onClick: () => (location.href = 'ch5-surface.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
+      : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(S.idx + 1) }]);
+  S.phase = 'done';
+  updateUI();
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function setStatus(msg, cls) { $('status').textContent = msg; $('status').className = 'status ' + cls; }
+
+// The board is locked while the briefing talks; say so instead of silently ignoring the click.
+function lockedClick() {
+  const cur = bites.list[bites.i];
+  setStatus(cur && cur.ask && cur.picked === undefined ? 'Answer the question in the briefing first.' : 'Read the briefing first: press NEXT → there.', 'warn');
+  QEC.ui.fx.nudge(cv);
+}
+
+function updateUI() {
+  if (!S) return;
+  const lv = S.lv, rounds = lv.kind === 'row' || lv.kind === 'square';
+  $('hud').style.visibility = rounds ? '' : 'hidden';
+  $('round-controls').style.display = rounds ? '' : 'none';
+  if (rounds) {
+    $('h-goal-lbl').textContent = lv.countAll ? 'ROUNDS' : 'SOLVED';
+    $('h-goal').textContent = `${lv.countAll ? S.played : S.solved}/${lv.goal}`;
+    $('h-lit').textContent = S.phase === 'ready' || !S.err ? 0 : syndrome().filter(Boolean).length;
+  }
+  const act = bites.open;
+  $('btn-glitch').disabled = S.phase !== 'ready' || !act;
+  $('btn-check').disabled = S.phase !== 'hidden' || !act;
+  $('btn-round').style.display = S.phase === 'revealed' ? '' : 'none';
+  $('btn-retry').style.display = $('btn-reveal').style.display = S.phase === 'failed' ? '' : 'none';
+}
+bites.onChange = updateUI;
+
+$('btn-glitch').onclick = glitch;
+$('btn-check').onclick = check;
+$('btn-round').onclick = () => { if (S.phase === 'revealed') newRound(); };
+$('btn-retry').onclick = retry;
+$('btn-reveal').onclick = () => { if (S.phase === 'failed') endRound(); };
+
+// ── Geometry and input ─────────────────────────────────────────────────────
+const rowX = c => 90 + c * (W - 180) / 2;
+const gapX = k => (rowX(k) + rowX(k + 1)) / 2;
+const SLOT_Y = 250;
+const CLASH_QY = 130;
+
+function qubitXY(q) {
+  if (S.lv.kind === 'square' || S.lv.kind === 'build') { const { r, c } = code.data[q]; return { x: G.px(c), y: G.py(r) }; }
+  return { x: rowX(q), y: S.lv.kind === 'clash' ? CLASH_QY : ROW_QY };
+}
+
+function hitQubit(p) {
+  if (!S || S.lv.kind === 'clash') return -1;
+  for (let q = 0; q < code.n; q++) {
+    const { x, y } = qubitXY(q);
+    if ((p.x - x) ** 2 + (p.y - y) ** 2 <= (QR + 12) ** 2) return q;
+  }
+  return -1;
+}
+
+const input = QEC.ui.pauliInput(cv, {
+  hit: hitQubit, onApply: apply, onSet: setCorr,
+  enabled: () => playing(),
+  allowed: () => S.lv.tools,
+  current: q => P.get(S.corr, q),
+});
+
+cv.addEventListener('click', e => {
+  if (!S) return;
+  const p = pointer(cv, e);
+  if (S.lv.kind === 'clash') { const k = hitSlot(p); if (k >= 0) place(k); return; }
+  if (S.lv.kind === 'build') { const q = hitQubit(p); if (q >= 0) toggle(q); return; }
+  if (hitQubit(p) < 0 || playing()) return;
+  if (!bites.open) return lockedClick();
+  if (S.phase === 'ready') setStatus('Press ⚡ GLITCH first.', 'warn');
+  else if (S.phase === 'failed') setStatus('Press ↺ TRY AGAIN to fix it once more, or SHOW ANSWER.', 'warn');
+  else if (S.phase === 'revealed') setStatus('This round is over. Press NEXT ROUND →.', 'info');
+});
+cv.addEventListener('mousemove', e => { hover = hitQubit(pointer(cv, e)); });
+cv.addEventListener('mouseleave', () => { hover = -1; });
+
+// ── Drawing ────────────────────────────────────────────────────────────────
+function diamond(x, y, s) {
+  ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s, y); ctx.closePath();
+}
+
+// A checker diamond. state: 'dark' | 'lit' | 'coin-lit' | 'coin-dark' | 'empty'
+function checker(x, y, col, state, pulse) {
+  ctx.save();
+  ctx.lineWidth = 2;
+  if (state === 'empty') {
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = col; ctx.globalAlpha = 0.45 + 0.35 * pulse;
+    diamond(x, y, 22); ctx.stroke();
+    ctx.restore();
+    text(ctx, '+', x, y + 1, { font: 'bold 18px Courier New', color: col });
+    return;
+  }
+  const lit = state === 'lit' || state === 'coin-lit';
+  ctx.strokeStyle = col;
+  ctx.fillStyle = col;
+  ctx.globalAlpha = lit ? 0.4 + 0.25 * pulse : 0.08;
+  if (lit) glow(ctx, col, 22 * pulse);
+  diamond(x, y, 22); ctx.fill();
+  ctx.globalAlpha = lit ? 1 : 0.55;
+  ctx.stroke();
+  ctx.restore();
+  const sym = state.startsWith('coin') ? '?' : lit ? '≠' : '=';
+  text(ctx, sym, x, y + 1, { font: 'bold 18px Courier New', color: lit ? '#fff' : col });
+}
+
+function questionArcs(x, y, qs, col, lit, qy, up) {
+  ctx.save();
+  ctx.strokeStyle = col; ctx.globalAlpha = lit ? 0.6 : 0.2;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  for (const q of qs) {
+    const s = up ? -1 : 1;
+    ctx.beginPath(); ctx.moveTo(x, y + s * 22);
+    ctx.quadraticCurveTo((x + rowX(q)) / 2, y + s * 70, rowX(q), qy + s * (QR + 4));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function qubitCircle(x, y, { stroke = '#00aacc', hot = false } = {}) {
+  ctx.save();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = stroke;
+  ctx.fillStyle = '#071022';
+  glow(ctx, stroke, hot ? 18 : 8);
+  ctx.beginPath(); ctx.arc(x, y, QR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function badge(x, y, letter) {
+  ctx.save();
+  ctx.strokeStyle = COL[letter]; ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  text(ctx, letter, x, y + 1, { font: 'bold 16px Courier New', color: COL[letter] });
+}
+
+function drawQubitFace(q, x, y) {
+  const fix = P.get(S.corr, q), pend = input.pending;
+  if (pend && pend.q === q) QEC.ui.drawPending(ctx, x, y, QR, pend, performance.now(), COL);
+  else if (fix !== 'I') badge(x, y, fix);
+  else text(ctx, '?', x, y + 1, { font: 'bold 18px Courier New', color: '#557788' });
+}
+
+function drawRow(t, pulse) {
+  const n = code.n, syn = S.phase === 'ready' ? code.stabs.map(() => 0) : syndrome();
+  const revealed = S.phase === 'revealed' || S.phase === 'done';
+  ctx.strokeStyle = 'rgba(0,204,255,0.15)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(rowX(0), ROW_QY); ctx.lineTo(rowX(n - 1), ROW_QY); ctx.stroke();
+  code.stabs.forEach((s, k) => {
+    const x = gapX(k);
+    questionArcs(x, ROW_QY, s.qubits, COL.X, syn[k], ROW_QY, true);
+    checker(x, ROW_QY, COL.X, syn[k] ? 'lit' : 'dark', pulse);
+  });
+  for (let q = 0; q < n; q++) {
+    const x = rowX(q), errHere = revealed && P.get(S.err, q) !== 'I';
+    qubitCircle(x, ROW_QY, { stroke: errHere ? '#ff4455' : hover === q && S.phase === 'hidden' ? '#ffffff' : '#00aacc', hot: hover === q });
+    drawQubitFace(q, x, ROW_QY);
+    text(ctx, `q${q + 1}`, x, ROW_QY + QR + 18, { font: '12px Courier New', color: '#557788' });
+    if (errHere) text(ctx, '⚡' + P.get(S.err, q), x, ROW_QY + QR + 40, { font: 'bold 16px Courier New', color: '#ff4455' });
+  }
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i], k = (t - r.t0) / 500;
+    if (k >= 1 || k < 0) { if (k >= 1) ripples.splice(i, 1); continue; }
+    ctx.strokeStyle = `rgba(255,136,34,${1 - k})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(r.x, r.y, QR + k * 30, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+function drawClash(t, pulse) {
+  const cyan = cyanCheck();
+  // clashing checkers re-toss their answer a few times a second
+  if (t - S.coinAt > 420) { S.coinAt = t; S.coins = S.coins.map(() => (Math.random() < 0.5 ? 1 : 0)); }
+  const qy = CLASH_QY;
+  ctx.strokeStyle = 'rgba(0,204,255,0.15)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(rowX(0), qy); ctx.lineTo(rowX(2), qy); ctx.stroke();
+
+  let shared = -1;
+  ROW.orange.forEach((o, k) => {
+    const x = gapX(k), bad = cyan && K.clash(o, cyan);
+    if (bad) shared = o.qubits.find(q => cyan.qubits.includes(q));
+    const state = bad ? (S.coins[k] ? 'coin-lit' : 'coin-dark') : 'dark';
+    questionArcs(x, qy, o.qubits, COL.Z, bad && S.coins[k], qy, true);
+    checker(x, qy, COL.Z, state, pulse);
+    if (cyan) {
+      const n = K.shared(o, cyan);
+      text(ctx, n === 1 ? 'shares 1: clash' : 'shares 2: calm', x, qy - 84,
+        { font: 'bold 12px Courier New', color: n === 1 ? '#ff4455' : '#00ff88' });
+    }
+  });
+
+  ROW.slots.forEach((s, k) => {
+    const x = gapX(k), here = S.cyan === k;
+    ctx.save();
+    ctx.strokeStyle = COL.X; ctx.globalAlpha = here ? 0.6 : 0.18; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+    for (const q of s.qubits) { ctx.beginPath(); ctx.moveTo(x, SLOT_Y - 22); ctx.lineTo(rowX(q), qy + QR + 4); ctx.stroke(); }
+    ctx.restore();
+    const waiting = bites.waiting === 'place' || bites.waiting === 'both';
+    checker(x, SLOT_Y, COL.X, here ? (S.coins[2] ? 'coin-lit' : 'coin-dark') : 'empty', waiting ? pulse : 0.3);
+  });
+
+  for (let q = 0; q < 3; q++) {
+    const x = rowX(q), hot = q === shared;
+    qubitCircle(x, qy, { stroke: hot ? '#ff4455' : '#00aacc', hot });
+    if (hot) {
+      ctx.save();
+      ctx.strokeStyle = '#ff4455'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+      glow(ctx, '#ff4455', 12 * pulse);
+      ctx.beginPath(); ctx.arc(x, qy, QR + 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    text(ctx, `q${q + 1}`, x, qy + 1, { font: 'bold 14px Courier New', color: hot ? '#ff8899' : '#7fa8c0' });
+  }
+}
+
+// A dashed "question" line from a checker to a qubit, stopping at the qubit's rim.
+function askLine(x1, y1, q, col, alpha) {
+  const { x, y } = qubitXY(q), d = Math.hypot(x - x1, y - y1), k = (d - QR - 4) / d;
+  ctx.save();
+  ctx.strokeStyle = col; ctx.globalAlpha = alpha; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 + (x - x1) * k, y1 + (y - y1) * k); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBuild(t, pulse) {
+  if (S.tiles) {
+    QEC.ui.surface.drawTiles(ctx, code, G, code.stabs.map(() => 0), t);
+    for (let q = 0; q < 4; q++) {
+      const { x, y } = qubitXY(q);
+      qubitCircle(x, y, { stroke: '#7fa8c0' });
+      text(ctx, `q${q + 1}`, x, y + 1, { font: 'bold 14px Courier New', color: '#7fa8c0' });
+    }
+    return;
+  }
+  if (t - S.coinAt > 420) { S.coinAt = t; S.coins = S.coins.map(() => (Math.random() < 0.5 ? 1 : 0)); }
+  const j = judge(), cyan = j.cyan;
+  const midX = (G.px(0) + G.px(1)) / 2, midY = (G.py(0) + G.py(1)) / 2;
+  const ox = [G.px(0) - 95, G.px(1) + 95];
+  const hot = new Set();
+
+  SQ.orange.forEach((o, k) => {
+    const bad = j.clashes.includes(o), n = K.shared(o, cyan);
+    if (bad) o.qubits.filter(q => S.cyanSet.includes(q)).forEach(q => hot.add(q));
+    for (const q of o.qubits) askLine(ox[k], midY, q, COL.Z, 0.5);
+    checker(ox[k], midY, COL.Z, bad ? (S.coins[k] ? 'coin-lit' : 'coin-dark') : 'dark', pulse);
+    text(ctx, `shares ${n}`, ox[k], midY - 44, { font: 'bold 12px Courier New', color: bad ? '#ff4455' : '#00ff88' });
+    text(ctx, bad ? 'clash' : 'calm', ox[k], midY + 44, { font: 'bold 12px Courier New', color: bad ? '#ff4455' : '#00ff88' });
+  });
+
+  for (const q of S.cyanSet) askLine(midX, midY, q, COL.X, 0.75);
+  const cState = !S.cyanSet.length ? 'empty' : j.clashes.length ? (S.coins[2] ? 'coin-lit' : 'coin-dark') : 'dark';
+  checker(midX, midY, COL.X, cState, bites.waiting === 'built' ? pulse : 0.3);
+
+  for (let q = 0; q < 4; q++) {
+    const { x, y } = qubitXY(q), red = hot.has(q);
+    qubitCircle(x, y, { stroke: red ? '#ff4455' : hover === q && bites.open ? '#ffffff' : '#00aacc', hot: red || hover === q });
+    if (red) {
+      ctx.save();
+      ctx.strokeStyle = '#ff4455'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+      glow(ctx, '#ff4455', 12 * pulse);
+      ctx.beginPath(); ctx.arc(x, y, QR + 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    text(ctx, `q${q + 1}`, x, y + 1, { font: 'bold 14px Courier New', color: red ? '#ff8899' : '#7fa8c0' });
+    const below = y < midY ? y - QR - 14 : y + QR + 16;
+    if (!S.cyanSet.includes(q)) text(ctx, 'Z unseen', x, below, { font: 'bold 12px Courier New', color: '#cc7733' });
+  }
+}
+
+function drawSquare(t, pulse) {
+  const syn = S.phase === 'ready' ? code.stabs.map(() => 0) : syndrome();
+  const revealed = S.phase === 'revealed' || S.phase === 'done';
+  const r = residual();
+  QEC.ui.surface.drawTiles(ctx, code, G, syn, t);
+
+  // harmless: glitch + fix are exactly one checker's qubits
+  if (revealed && S.result === 'ok' && !P.isIdentity(r)) {
+    code.stabPaulis.forEach((sp, k) => {
+      if (!P.equal(sp, r)) return;
+      ctx.save();
+      QEC.ui.surface.tilePath(ctx, code, code.stabs[k], G);
+      ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 4; glow(ctx, '#00ff88', 18 * pulse);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+  for (let q = 0; q < code.n; q++) {
+    const { x, y } = qubitXY(q);
+    const errHere = revealed && P.get(S.err, q) !== 'I';
+    qubitCircle(x, y, { stroke: errHere ? '#ff4455' : hover === q && S.phase === 'hidden' ? '#ffffff' : '#7fa8c0', hot: hover === q });
+    if (revealed && S.result === 'logical' && P.get(r, q) !== 'I') {
+      ctx.save();
+      ctx.strokeStyle = '#ffee00'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]);
+      glow(ctx, '#ffee00', 14 * pulse);
+      ctx.beginPath(); ctx.arc(x, y, QR + 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    drawQubitFace(q, x, y);
+    if (errHere) text(ctx, '⚡' + P.get(S.err, q), x, y + QR + 18, { font: 'bold 15px Courier New', color: '#ff4455' });
+  }
+}
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, H);
+  if (!S) return;
+  const pulse = 0.6 + 0.4 * Math.sin(t * 0.006);
+  if (S.lv.kind === 'clash') drawClash(t, pulse);
+  else if (S.lv.kind === 'build') drawBuild(t, pulse);
+  else if (S.lv.kind === 'row') drawRow(t, pulse);
+  else drawSquare(t, pulse);
+
+  if ((S.phase === 'revealed' || S.phase === 'failed') && S.result) {
+    const ok = S.result === 'ok';
+    glow(ctx, ok ? '#00ff88' : '#ff4455', 20);
+    text(ctx, ok ? '✓ FIXED' : '✗ LOGICAL ERROR', W / 2, 26, { font: 'bold 22px Courier New', color: ok ? '#00ff88' : '#ff4455' });
+    noGlow(ctx);
+  }
+  // locked board: dim it and say why (the briefing is talking)
+  if (!bites.open && S.phase !== 'done') {
+    ctx.fillStyle = 'rgba(3,8,18,0.35)'; ctx.fillRect(0, 0, W, H);
+    const cur = bites.list[bites.i];
+    text(ctx, cur && cur.ask && cur.picked === undefined ? 'ANSWER IN THE BRIEFING' : 'READ THE BRIEFING', W / 2, H - 16, { font: 'bold 13px Courier New', color: '#8fa1b3' });
+  }
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+// Storage id 'chains' is kept from the older 5-level CHAINS chapter: a save inside it resumes at the
+// last level here, and a finished chapter stays finished.
+const chapter = QEC.ui.chapter({ id: 'chains', el: $('levels'), levels: LEVELS.map(l => l.name), start: startLevel });
+chapter.begin();
+QEC.ui.loop(draw);
+</script>
+</body>
+</html>

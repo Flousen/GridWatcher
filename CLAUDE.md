@@ -14,11 +14,11 @@ A browser game that teaches quantum error correction in six short chapters. Stat
 - `js/core/` holds pure logic with no DOM. Put anything that can be tested here (puzzle rules, decoders, caps and limits) and add tests in `tests/*.test.js`. A new file must be registered in `tests/manifest.js`.
 - `js/ui/` holds shared UI: `bites.js` (briefing and level chips via `QEC.ui.chapter`), `progress.js` (localStorage), `canvas.js`, `surface.js`.
 - Each chapter is one self-contained HTML file with its game code inline. Shared look lives in `css/theme.css` (colour tokens on `:root`). X = cyan, Z = orange, Y = purple, as in Litinski.
-- `ch4-surface.html` and `ch5-threshold.html` are redirect stubs for old links, so leave them.
+- `ch4-chains.html`, `ch4-surface.html` and `ch5-threshold.html` are redirect stubs for old links, so leave them.
 
 ## Progress storage: keep it compatible
 
-- Key `gridwatcher.progress.v1`. Chapter ids are storage keys, not file numbers: `ch1`, `ch2`, `ch3`, `chains`, `ch4` (= ch5-surface), `ch5` (= ch6-threshold). Never rename them.
+- Key `gridwatcher.progress.v1`. Chapter ids are storage keys, not file numbers: `ch1`, `ch2`, `ch3`, `chains` (= ch4-square), `ch4` (= ch5-surface), `ch5` (= ch6-threshold). Never rename them.
 - Saved progress from older versions must still resume correctly. Example: old ch1 saves have `{done:true}` and no `level`. When you change level counts or the chapter helper, think through what an existing save does.
 - Storage may be missing (private mode), so every access stays wrapped.
 

@@ -19,18 +19,21 @@
     return code;
   }
 
-  // n qubits in a row, Z⊗Z checks between neighbours. Protects against X errors only.
-  function repetitionCode(n) {
+  // n qubits in a row, checks between neighbours. type 'Z' (the default): Z⊗Z checks that catch
+  // X errors only (Chapter 3). type 'X': X⊗X checks that catch Z errors only (Chapter 4's phase row).
+  // The logical operator the checks cannot see runs along the whole row.
+  function repetitionCode(n, type = 'Z') {
     const data = Array.from({ length: n }, (_, i) => ({ r: 0, c: i }));
     const stabs = [];
-    for (let i = 0; i < n - 1; i++) stabs.push({ type: 'Z', qubits: [i, i + 1], r: 0, c: i + 0.5 });
+    for (let i = 0; i < n - 1; i++) stabs.push({ type, qubits: [i, i + 1], r: 0, c: i + 0.5 });
+    const all = data.map((_, i) => i), other = type === 'Z' ? 'X' : 'Z';
     return finish({
-      name: `repetition-${n}`, n, distance: n, data, stabs,
-      logicals: { X: data.map((_, i) => i), Z: [0] },
+      name: `repetition-${n}${type === 'Z' ? '' : '-' + type}`, n, distance: n, data, stabs,
+      logicals: { [other]: all, [type]: [0] },
     });
   }
 
-  // Rotated surface code of odd distance d.
+  // Rotated surface code of distance d (odd d in Chapters 5 and 6; d = 2 is Chapter 4's square).
   // Data qubits sit on a d×d grid. Checks sit on the corners (i, j) between them, 0 ≤ i, j ≤ d,
   // touching the (up to) 4 surrounding qubits. Their type follows a checkerboard.
   // On the top/bottom edges only X-checks survive (weight 2), on the left/right edges only Z-checks.

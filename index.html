@@ -90,8 +90,9 @@ const CHAPTERS = [
   { id: 'ch1', href: 'ch1-hamming.html',      title: 'GLITCH PUZZLE',     idea: 'Wire sensors so every glitch leaves a unique alarm pattern — a <em>syndrome</em>.' },
   { id: 'ch2', href: 'ch2-qubit-errors.html', title: 'TWO KINDS OF GLITCH', idea: 'Qubits can flip their bit (X), their phase (Z), or both (Y). Learn to undo each.' },
   { id: 'ch3', href: 'ch3-repetition.html',   title: 'ASK, DON\'T LOOK',   idea: 'Parity checks reveal where an error is without reading the qubits. Meet the repetition code.' },
-  { id: 'chains', href: 'ch4-chains.html',   title: 'CHAINS',            idea: 'On a grid each check sees four qubits. Glitches line up into chains, and only the ends light up.' },
-  // ids 'ch4'/'ch5' are storage keys from before CHAINS was inserted; kept so saved progress survives.
+  // id 'chains' is the storage key of an older version of this chapter; kept so saved progress survives.
+  { id: 'chains', href: 'ch4-square.html',   title: 'FROM ROW TO SQUARE', idea: 'Phase flips need a checker of their own. Both kinds only fit together on a grid: meet the smallest surface code.' },
+  // ids 'ch4'/'ch5' are storage keys from before Chapter 4 was inserted; kept so saved progress survives.
   { id: 'ch4', href: 'ch5-surface.html',      title: 'SURFACE CODE',      idea: 'Two kinds of checks on a grid catch both kinds of errors. Decode it yourself.' },
   { id: 'ch5', href: 'ch6-threshold.html',    title: 'THRESHOLD LAB',     idea: 'When do bigger codes help? Run thousands of shots and find the tipping point.' },
   { id: 'ch6', href: null,                    title: 'GAME OF SURFACE CODES', idea: 'Logical qubits as tiles. Lattice surgery puzzles with a time & space budget.' },

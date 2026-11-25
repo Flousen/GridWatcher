@@ -84,8 +84,9 @@ const LEVELS = [
   {
     name: 'Z-CHECKS', goal: 3, tools: ['X'], errors: single(['X']),
     bites: [
-      'Welcome to the full <b>surface code</b>: a 3 × 3 patch, and the grey tiles from Chapter 4 are switched on. The 9 circles are data qubits that together store <b>one</b> well-protected qubit.',
-      'The <span class="z">orange tiles</span> are the <b>Z-checks</b> you know: they catch <span class="x">X</span> flips, and a chain of flips only lights up at its ends. Warm-up: <b>left-click</b> a qubit to apply <span class="x">X</span>.',
+      'The square from Chapter 4, grown to a 3 × 3 <b>surface code</b> patch. The 9 circles are data qubits that together store <b>one</b> well-protected qubit.',
+      'The tiles sit in a checkerboard, with half-tiles on the edges, so an orange and a cyan tile always share 0 or 2 qubits: no clash. And unlike the square, this patch can <em>fix</em> any single glitch from the lit tiles alone.',
+      'The <span class="z">orange tiles</span> are the <b>Z-checks</b>: Chapter 3\'s checkers, now asking two or four qubits. They catch <span class="x">X</span> flips. Warm-up: <b>left-click</b> a qubit to apply <span class="x">X</span>.',
       { t: 'Let an <span class="x">X</span> glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'Find a qubit that touches <em>every</em> lit tile and <em>no</em> dark one. If two of them fit, either is correct — pick one, then CHECK.', wait: 'solved', hint: 'fix it, then CHECK' },
       'Solve 3 rounds. Stuck? <b>? HINT</b> shows what a decoder would do.',
@@ -94,8 +95,8 @@ const LEVELS = [
   {
     name: 'X-CHECKS', goal: 3, tools: ['Z'], errors: single(['Z']),
     bites: [
-      'Now the <span class="x">cyan tiles</span>: <b>X-checks</b>. They ask the same question in the <em>phase</em> direction, so they catch <span class="z">Z</span> flips.',
-      'This is exactly what the repetition code was missing. <b>Right-click</b> a qubit (on touch: tap it) to apply <span class="z">Z</span>. Fix 3 phase flips.',
+      'Now the <span class="x">cyan tiles</span>: <b>X-checks</b>, the phase checkers from Chapter 4. They catch <span class="z">Z</span> flips.',
+      '<b>Right-click</b> a qubit (on touch: tap it) to apply <span class="z">Z</span>. Fix 3 phase flips.',
     ],
   },
   {

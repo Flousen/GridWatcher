@@ -121,7 +121,7 @@ const LEVELS = [
     bites: [
       { t: 'One last glitch. Go ahead.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'Hm. Every checker stays dark. Nothing to fix? Press CHECK.', wait: 'checked', hint: 'press CHECK' },
-      'It was a <span class="z">Z</span> glitch! These checkers compare <em>bit values</em> only, so a <b>phase flip</b> slips right through. To catch both kinds we need two kinds of checkers on a 2D grid — the <b>surface code</b>. First step: what changes when checkers sit on a grid at all? That\'s Chapter 4.',
+      'It was a <span class="z">Z</span> glitch! These checkers compare <em>bit values</em> only, so a <b>phase flip</b> slips right through. To catch both kinds we need a second kind of checker. That\'s Chapter 4.',
     ],
   },
 ];
@@ -274,10 +274,10 @@ function levelDone() {
     3: '✓ <b>Level complete.</b> To survive <b>k</b> glitches you need distance <b>2k + 1</b>. Every extra qubit is one more that can glitch, so engineers pick exactly that.',
   }[S.idx];
   bites.finish(last
-    ? '✓ <b>Chapter complete.</b> Parity checks find bit flips without looking. Next: what changes when checkers sit on a grid.'
+    ? '✓ <b>Chapter complete.</b> Parity checks find bit flips without looking. Next: a checker for phase flips.'
     : msg,
     last
-      ? [{ label: 'CHAPTER 4 →', onClick: () => (location.href = 'ch4-chains.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
+      ? [{ label: 'CHAPTER 4 →', onClick: () => (location.href = 'ch4-square.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
       : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(S.idx + 1) }]);
   S.phase = 'done';
   updateUI();

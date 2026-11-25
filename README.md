@@ -11,7 +11,7 @@ Learn quantum error correction by playing. Six short browser chapters, one idea 
 | 1 | Glitch Puzzle | A *syndrome* pinpoints an error without reading the data | Learn the controls step by step, wire sensors so every node has a unique alarm pattern (Hamming codes), say how many nodes three sensors can tell apart, and use each wiring to locate glitches from the alarm alone |
 | 2 | Two Kinds of Glitch | Qubits suffer bit flips (X), phase flips (Z) and both (Y) — and can't be peeked at | Predict what Z does to \|0⟩; undo glitches on a qubit arrow, where only one-move fixes count; measure, then try (and fail) to undo the collapse |
 | 3 | Ask, Don't Look | Parity checks locate errors; a code's *distance* limits how many | Fix hidden errors in the repetition code using only the checkers; then pick the smallest code that survives a burst of 1–3 glitches |
-| 4 | Chains | On a grid, errors form chains and checks only see their ends; a decoder bets on the shortest chain | Decode X glitches on the Z-checks of a distance-5 surface code; predict, then fix a chain by the *other* route and see the loop |
+| 4 | From Row to Square | Phase flips need their own checks; X- and Z-checks may share 0 or 2 qubits, never 1, so both kinds only fit on a grid | Fix Z glitches with phase checkers on Chapter 3's row; predict, then see two checkers that share one qubit turn each other into coin tosses; in a 2×2 square, find the one cyan checker that clashes with nothing (all four qubits); play that square, the smallest surface code, which spots every single glitch but cannot fix it (distance 2) |
 | 5 | Surface Code | X- and Z-checks on a grid; degeneracy; logical errors | Decode a distance-3 surface code by hand (left click = X, right click = Z, both = Y); with two glitches, score against a minimum-weight decoder |
 | 6 | Threshold Lab | Below the threshold, bigger codes win; above it, they lose | Bet which distance wins at low and high p, run Monte Carlo sweeps for d = 3, 5, 7, find the crossing, and advise two labs |
 | 7 | *Game of Surface Codes* | Lattice surgery with patches as tiles (Litinski 2019) | coming next |
@@ -35,7 +35,7 @@ The physics and puzzle logic lives in `js/core/` and is tested independently fro
 - **Browser:** open `tests.html` — green means everything passes.
 - **Terminal:** `scripts/run-tests.sh` (needs `gjs`, GNOME's JavaScript shell, preinstalled on most Linux desktops).
 
-What's covered: Pauli algebra; Hamming puzzle checks; the repetition code; rotated surface codes for d = 3, 5, 7 (check counts and weights, commutation, logical operators, every single error detected, degeneracy, logical errors); decoders (lookup table, greedy and exact minimum-weight matching — including "corrects every error on ≤ (d−1)/2 qubits" checked exhaustively); the repetition code's distance limit behind Chapter 3's PICK A SIZE (every error on ≤ ⌊(n−1)/2⌋ qubits fixed, every heavier one a logical error); locating a glitch from a Hamming wiring, and a wire cap that never refuses a valid wiring; the Chapter 4 puzzles (lit tiles and shortest fix of every pattern); and the threshold simulation (bigger codes win at low noise and lose at high noise).
+What's covered: Pauli algebra; Hamming puzzle checks; the repetition code; rotated surface codes for d = 3, 5, 7 (check counts and weights, commutation, logical operators, every single error detected, degeneracy, logical errors); decoders (lookup table, greedy and exact minimum-weight matching — including "corrects every error on ≤ (d−1)/2 qubits" checked exhaustively); the repetition code's distance limit behind Chapter 3's PICK A SIZE (every error on ≤ ⌊(n−1)/2⌋ qubits fixed, every heavier one a logical error); locating a glitch from a Hamming wiring, and a wire cap that never refuses a valid wiring; Chapter 4's claims (the clash rule matches the Pauli algebra, no cyan slot on a row is clash-free, all four qubits is the only clash-free cyan checker in the square, the phase row, and the square: every single glitch lights a tile but no one-flip fix is sure, distance 2); and the threshold simulation (bigger codes win at low noise and lose at high noise).
 
 `scripts/shot.sh` and `scripts/shot-play.sh` take headless-Firefox screenshots of a page (optionally after running some JS in it) for visual checks.
 
@@ -43,9 +43,9 @@ What's covered: Pauli algebra; Hamming puzzle checks; the repetition code; rotat
 
 ```
 index.html                 learning map
-ch1-hamming.html … ch6-threshold.html
+ch1-hamming.html … ch6-threshold.html   (ch4-chains, ch4-surface, ch5-threshold: redirects for old links)
 css/theme.css              shared neon theme
-js/core/                   pure logic, tested: rng, pauli, codes, decoder, sim, hamming, chains (Chapter 4 puzzles)
+js/core/                   pure logic, tested: rng, pauli, codes, decoder, sim, hamming, checks (Chapter 4's clash rule)
 js/ui/                     bites (step-by-step explanations), progress, canvas + surface drawing
 tests.html, tests/         test runner (browser + gjs) and test files
 ```
