@@ -27,4 +27,16 @@ suite('hamming puzzle', () => {
     for (let b = 0; b < 3; b++) w[b] = [0, 1, 2, 3, 4, 5, 6].filter(i => ((i + 1) >> b) & 1);
     assert.equal(check(wiring(w), 7), null);
   });
+
+  test('locate: with a valid wiring every node\'s alarm names exactly that node', () => {
+    const w = {};
+    for (let b = 0; b < 3; b++) w[b] = [0, 1, 2, 3, 4, 5, 6].filter(i => ((i + 1) >> b) & 1);
+    const conns = wiring(w), ids = [0, 1, 2, 3, 4, 5, 6];
+    for (const id of ids) assert.deepEqual(H.locate(conns, ids, H.alarmPattern(conns, id).triggered), [id], `node ${id}`);
+  });
+
+  test('locate: a collision leaves the alarm ambiguous', () => {
+    const conns = wiring({ 0: [0, 1], 1: [2] });
+    assert.deepEqual(H.locate(conns, [0, 1, 2], [0]), [0, 1]);
+  });
 });

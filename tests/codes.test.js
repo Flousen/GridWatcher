@@ -37,6 +37,34 @@ suite('repetition code', () => {
   });
 });
 
+// Chapter 3, PICK A SIZE: the game says a repetition code of n qubits fixes ANY ⌊(n−1)/2⌋ glitches,
+// and that more glitches ALWAYS end in a logical error with the fewest-flips fix. Check every case.
+suite('repetition code: distance limit', () => {
+  const P = QEC.Pauli, D = QEC.decoder, C = QEC.codes;
+
+  test('correctable and distanceFor', () => {
+    assert.deepEqual([3, 5, 7].map(C.correctable), [1, 2, 3]);
+    assert.deepEqual([1, 2, 3].map(C.distanceFor), [3, 5, 7]);
+    for (let k = 1; k <= 3; k++) {
+      assert.equal(C.correctable(C.distanceFor(k)), k);
+      assert.less(C.correctable(C.distanceFor(k) - 2), k, `distance ${C.distanceFor(k) - 2} is too small for ${k}`);
+    }
+  });
+
+  for (const n of [3, 5, 7]) {
+    test(`n=${n}: every X error on ≤ ${C.correctable(n)} qubits is fixed, every heavier one is a logical error`, () => {
+      const code = C.repetitionCode(n), t = C.correctable(n);
+      for (let mask = 1; mask < (1 << n); mask++) {
+        const qs = [];
+        for (let q = 0; q < n; q++) if ((mask >> q) & 1) qs.push(q);
+        const err = P.on(n, qs, 'X');
+        const status = D.residualStatus(code, err, D.matchingDecode(code, D.syndrome(code, err)));
+        assert.equal(status, qs.length <= t ? 'ok' : 'logical', `X on ${qs}`);
+      }
+    });
+  }
+});
+
 for (const d of [3, 5, 7]) {
   suite(`surface code d=${d}`, () => {
     const P = QEC.Pauli, D = QEC.decoder;

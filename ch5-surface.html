@@ -62,6 +62,7 @@ const cv = $('cv'), ctx = cv.getContext('2d');
 const W = cv.width;
 const rng = QEC.makeRng(QEC.randomSeed());
 const bites = new QEC.ui.Bites($('bites'));
+bites.logAs = 'ch4';   // storage id of this chapter (see index.html)
 
 const d = 3, code = QEC.codes.rotatedSurfaceCode(d), N = code.n;
 const G = QEC.ui.surface.geometry(d, W, 150), { px, py } = G, QR = 22;
@@ -115,7 +116,7 @@ const LEVELS = [
     ],
   },
   {
-    name: 'OVERLOAD', goal: 3, countAll: true, tools: ['X', 'Z'],
+    name: 'OVERLOAD', goal: 3, matchDecoder: true, tools: ['X', 'Z'],
     errors: (() => {
       const bagA = rng.bag(['X', 'Z', 'Y']), bagB = rng.bag(['X', 'Z', 'Y']);
       return () => {
@@ -126,7 +127,8 @@ const LEVELS = [
     })(),
     bites: [
       'Final level: <b>two</b> glitches per round.',
-      'A distance-3 patch only <em>promises</em> to fix one. Sometimes the best first guess is wrong, no matter how clever you are. Play 3 rounds and see.',
+      'A distance-3 patch only <em>promises</em> to fix one. Sometimes the best first guess is wrong, no matter how clever you are.',
+      'So the score is fair: a round counts when your <b>first</b> try does as well as a minimum-weight decoder. Losing a round it would lose too still counts. Score 3.',
     ],
   },
 ];
@@ -136,7 +138,7 @@ let S = null, hover = -1, hintUntil = 0, hintCorr = null, explainedTwin = false;
 
 function startLevel(i) {
   const lv = LEVELS[i];
-  S = { lv, idx: i, solved: 0, played: 0, round: 0, hints: 0 };
+  S = { lv, idx: i, solved: 0, played: 0, matched: 0, round: 0, hints: 0 };
   newRound();
   bites.play(lv.bites, () => { if (S.goalReached) levelDone(); else updateUI(); });
 }
@@ -149,6 +151,7 @@ function newRound() {
   S.result = null;
   S.candidates = [];
   S.retried = false;
+  S.firstMatch = null;   // OVERLOAD: did the first CHECK of this round do as well as the decoder?
   hintUntil = 0;
   setStatus('All quiet. Press ⚡ GLITCH.', 'info');
   updateUI();
@@ -237,6 +240,7 @@ function logicalFeedback() {
       + 'Or <b>SHOW ANSWER</b> to see where the glitches really were.';
   }
   return `${head} This one was readable, though: a lighter fix exists that leaves the stored qubit alone. `
+    + (S.lv.matchDecoder ? 'The decoder would have won this round, so it doesn\'t count. ' : '')
     + '<b>↺ TRY AGAIN</b>, then <b>? HINT</b> shows which qubits a minimum-weight decoder flips.';
 }
 
@@ -245,14 +249,19 @@ function check() {
   if (S.phase !== 'hidden' || !bites.open) return;
   if (!D.isZero(syndrome())) { setStatus('Some tiles are still lit — keep going.', 'warn'); QEC.ui.fx.nudge(cv); return; }
   S.result = D.residualStatus(code, S.err, S.corr);
+  if (S.lv.matchDecoder && S.firstMatch === null) {
+    S.firstMatch = S.result === 'ok' || decoderAlsoFails();
+    QEC.progress.note('ch4', `overload-${S.round}`, { kind: 'task', ok: S.firstMatch });
+  }
   // advance the briefing first, so feedback below lands under the new bite
   bites.notify('checked');
   if (S.result === 'ok') {
     QEC.ui.fx.good(cv);
     bites.notify('solved');
     S.solved++;
-    if (S.retried) bites.feedback('Second try worked. A real decoder gets only <b>one</b> guess per round — it has to pick the most likely fix straight away.');
-    if (P.equal(S.err, S.corr)) setStatus('✓ Fixed — exactly the glitched qubit.', 'success');
+    if (S.retried) bites.feedback('Second try worked. A real decoder gets only <b>one</b> guess per round — it has to pick the most likely fix straight away.'
+      + (S.lv.matchDecoder && !S.firstMatch ? ' So this round doesn\'t count.' : ''));
+    if (P.equal(S.err, S.corr)) setStatus(`✓ Fixed — exactly the glitched qubit${P.weight(S.err) > 1 ? 's' : ''}.`, 'success');
     else {
       setStatus('✓ Fixed — with a different fix than the glitch! Still perfect.', 'success');
       if (!explainedTwin) {
@@ -287,8 +296,9 @@ function endRound() {
   S.phase = 'revealed';
   S.played++;
   S.round++;
+  if (S.lv.matchDecoder && S.firstMatch) S.matched++;
   updateUI();
-  const count = S.lv.countAll ? S.played : S.solved;
+  const count = S.lv.countAll ? S.played : S.lv.matchDecoder ? S.matched : S.solved;
   // wrap up once the goal is met — but never cut off a bite the player is still reading
   if (count >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 900); }
 }
@@ -312,8 +322,8 @@ function setStatus(msg, cls) { $('status').textContent = msg; $('status').classN
 function updateUI() {
   if (!S) return;
   const lv = S.lv;
-  $('h-goal-lbl').textContent = lv.countAll ? 'ROUNDS' : 'SOLVED';
-  $('h-goal').textContent = `${lv.countAll ? S.played : S.solved}/${lv.goal}`;
+  $('h-goal-lbl').textContent = lv.countAll ? 'ROUNDS' : lv.matchDecoder ? 'MATCHED' : 'SOLVED';
+  $('h-goal').textContent = `${lv.countAll ? S.played : lv.matchDecoder ? S.matched : S.solved}/${lv.goal}`;
   $('h-lit').textContent = S.phase === 'ready' ? 0 : syndrome().filter(Boolean).length;
   $('h-hints').textContent = S.hints;
   const act = bites.open;

@@ -796,6 +796,9 @@ function render(ts = 0) {
       if (cs.has(glitchNodeId)) triggeredSet.add(sid);
     }
   }
+  // LOCATE: the alarm rings, but the glitched node stays hidden — the player reads it off the sensors.
+  const loc = phase === 'locate' ? S.locate : null;
+  if (loc) for (const [sid, cs] of conns) if (cs.has(loc.target)) triggeredSet.add(sid);
 
   // ── Collision sets ──
   const collideNodeIds = new Set();
@@ -848,6 +851,8 @@ function render(ts = 0) {
   for (const node of nodes) {
     let ns;
     if (glitchNodeId === node.id)         ns = 'glitch';
+    else if (loc && loc.flash === node.id) ns = 'success';
+    else if (loc && loc.wrong === node.id) ns = 'collide';
     else if (collideNodeIds.has(node.id)) ns = 'collide';
     else if (isSuccess)                   ns = 'success';
     else                                  ns = 'idle';
@@ -880,6 +885,20 @@ function render(ts = 0) {
     } else {
       drawCollisionArc(nodes[collision.n1], nodes[collision.n2]);
     }
+  }
+
+  // ── Alarm banner while locating ──
+  if (loc) {
+    const fired = [...triggeredSet].sort((a, b) => a - b).map(id => `S${id + 1}`).join(' + ');
+    ctx.fillStyle = 'rgba(5,5,16,0.82)';
+    ctx.fillRect(0, 4, W, 36);
+    ctx.fillStyle = '#ff6666';
+    ctx.font = 'bold 18px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    glow('#ff4444', 12);
+    ctx.fillText(`ALARM ${loc.got + 1}/${loc.need}:  ${fired}  →  which node?`, W/2, 22);
+    noGlow();
   }
 
   // ── Success overlay text ──
@@ -955,6 +974,7 @@ function editable() {
 }
 
 canvas.addEventListener('click', e => {
+  if (S.phase === 'locate') return locateClick(cPos(e));
   if (!editable()) return;
   const p = cPos(e);
 
@@ -1108,26 +1128,75 @@ function finish() {
     }
     startLoop();
   } else {
-    setStatus('✓ ALL PATTERNS UNIQUE — Level Complete!', 'success');
     QEC.ui.fx.good(el('gc'));
-    const lv = LEVELS[S.lvIdx];
-    if (lv.takeaway) { el('takeaway').innerHTML = lv.takeaway; el('takeaway').style.display = 'block'; }
-    const lastCore = S.lvIdx === CORE_LEVELS - 1;
-    if (S.lvIdx >= CORE_LEVELS - 1) {
-      QEC.progress.markDone('ch1');
-      el('btn-chapter').style.display = 'inline-block';
-    }
-    if (lastCore) {
-      // Core chapter done: Chapter 2 is the main road, challenges are optional.
-      el('btn-challenge').style.display = 'inline-block';
-      setStatus('✓ ALL PATTERNS UNIQUE — Chapter 1 complete!', 'success');
-    } else if (S.lvIdx < LEVELS.length - 1) {
-      el('btn-next').style.display = 'inline-block';
-    } else {
-      setStatus('✓ ALL PATTERNS UNIQUE — every challenge solved!', 'success');
-    }
-    startLoop(); // pulsing success animation
+    // Core levels: before moving on, USE the wiring — read a glitch off the alarm pattern alone.
+    if (!LEVELS[S.lvIdx].challenge) return startLocate();
+    levelComplete();
   }
+}
+
+// ── Locate: decode with your own syndrome table ──────────────────────────────
+const sensorList = ids => ids.length ? ids.map(id => `S${id + 1}`).join(' + ') : 'no sensor at all';
+
+function startLocate() {
+  const order = S.nodes.map(n => n.id);
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  S.phase = 'locate';
+  S.locate = { order, got: 0, need: 2, target: order[0], wrong: -1, flash: -1, missed: false };
+  setPhaseLabel('LOCATE');
+  setStatus('✓ All patterns unique. Now use them: a node glitched and the alarm rang. Which node? Click it.', 'warn');
+  el('btn-test').disabled = true;
+  startLoop();
+}
+
+function locateClick(p) {
+  const L = S.locate, hn = hitNode(p.x, p.y);
+  if (!hn || L.flash >= 0) return;
+  const first = !L.missed;
+  const fired = QEC.hamming.alarmPattern(S.conns, L.target).triggered;
+  const right = QEC.hamming.locate(S.conns, S.nodes.map(n => n.id), fired).includes(hn.id);
+  if (L.got === 0) QEC.progress.note('ch1', `locate-${LEVELS[S.lvIdx].id}`, { kind: 'task', ok: first && right });
+  if (!right) {
+    L.missed = true;
+    L.wrong = hn.id;
+    const pat = QEC.hamming.alarmPattern(S.conns, hn.id).triggered;
+    setStatus(`✗ Node ${hn.label} would ring ${sensorList(pat)} — that's not what rang. Find the node wired to every lit sensor and no dark one.`, 'error');
+    QEC.ui.fx.nudge(el('gc'));
+    return;
+  }
+  L.flash = hn.id;
+  L.wrong = -1;
+  QEC.ui.fx.good(el('gc'));
+  setStatus(`✓ Node ${hn.label}! You found it from the alarm alone — without looking at any node.`, 'success');
+  setTimeout(() => {
+    L.got++;
+    L.flash = -1;
+    L.missed = false;
+    if (L.got >= L.need) { S.phase = 'done'; S.locate = null; el('btn-test').disabled = false; return levelComplete(); }
+    L.target = L.order[L.got];
+    setStatus('Another alarm. Which node glitched?', 'warn');
+  }, 900);
+}
+
+function levelComplete() {
+  setStatus('✓ ALL PATTERNS UNIQUE — Level Complete!', 'success');
+  const lv = LEVELS[S.lvIdx];
+  if (lv.takeaway) { el('takeaway').innerHTML = lv.takeaway; el('takeaway').style.display = 'block'; }
+  const lastCore = S.lvIdx === CORE_LEVELS - 1;
+  if (S.lvIdx >= CORE_LEVELS - 1) {
+    QEC.progress.markDone('ch1');
+    el('btn-chapter').style.display = 'inline-block';
+  }
+  if (lastCore) {
+    // Core chapter done: Chapter 2 is the main road, challenges are optional.
+    el('btn-challenge').style.display = 'inline-block';
+    setStatus('✓ ALL PATTERNS UNIQUE — Chapter 1 complete!', 'success');
+  } else if (S.lvIdx < LEVELS.length - 1) {
+    el('btn-next').style.display = 'inline-block';
+  } else {
+    setStatus('✓ ALL PATTERNS UNIQUE — every challenge solved!', 'success');
+  }
+  startLoop(); // pulsing success animation
 }
 
 // ── Buttons ───────────────────────────────────────────────────────────────────
