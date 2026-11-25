@@ -71,7 +71,7 @@ canvas { cursor: crosshair; touch-action: none; }
     <div class="legend">
       <span>click empty space = <b style="color:var(--purple)">sensor</b></span>
       <span>click a sensor, then nodes = wire / unwire</span>
-      <span>right-click / long-press a sensor = remove</span>
+      <span>drag a sensor = move · drag it off the board = remove</span>
     </div>
     <div class="status info" id="status"></div>
     <div id="log-wrap" hidden>
@@ -152,7 +152,7 @@ const LEVELS = [
       { t: 'Place your second sensor. A new sensor is selected right away.', wait: 'place', hint: 'click empty space',
         onShow: skipIf('place', () => S.sensors.length >= 2) },
       { t: 'To rewire an older sensor, click it first so it turns yellow. Try it.', wait: 'select', hint: 'click the other sensor' },
-      { t: 'A sensor can watch <b>several</b> nodes; click a wired node again to cut the wire. Wire both sensors, then press <b>TEST</b>: it glitches each node in turn.', wait: 'valid', hint: 'wire, then press TEST' },
+      { t: 'A sensor can watch <b>several</b> nodes; click a wired node again to cut the wire. To get rid of a sensor, drag it off the board. Wire both sensors, then press <b>TEST</b>: it glitches each node in turn.', wait: 'valid', hint: 'wire, then press TEST' },
       LOCATE,
     ],
     tip: 'Two sensors can ring in three ways: S1 alone, S2 alone, or both. Give each node a different one.',
@@ -582,6 +582,7 @@ function drawIsolatedWarning(node) {
 
 // ── Main render ───────────────────────────────────────────────────────────────
 let mouseXY = null;
+let drag = null;   // sensor being dragged: { s, id, ox, oy, dx, dy, sx, sy, moved, out } (see Input)
 
 function render(ts = 0) {
   ctx.clearRect(0, 0, W, H);
@@ -645,8 +646,8 @@ function render(ts = 0) {
     }
   }
 
-  // ── Hover drag line ──
-  if (phase === 'build' && selId !== null && mouseXY && canBuild()) {
+  // ── Hover drag line (not while a sensor itself is being dragged) ──
+  if (phase === 'build' && selId !== null && mouseXY && canBuild() && !(drag && drag.moved)) {
     const sel = sensors.find(s => s.id === selId);
     if (sel) drawDashedConn(sel.x, sel.y, mouseXY.x, mouseXY.y);
   }
@@ -674,7 +675,8 @@ function render(ts = 0) {
   // ── Draw sensors ──
   for (const sensor of sensors) {
     let ss;
-    if (triggeredSet.has(sensor.id))       ss = 'triggered';
+    if (drag && drag.moved && drag.out && drag.s === sensor) ss = 'collide';   // about to be removed
+    else if (triggeredSet.has(sensor.id))  ss = 'triggered';
     else if (collideSensorIds.has(sensor.id)) ss = 'collide';
     else if (isSuccess)                    ss = 'success';
     else if (selId === sensor.id)          ss = 'selected';
@@ -778,6 +780,7 @@ function editable() {
 }
 
 canvas.addEventListener('click', e => {
+  if (swallowClick) { swallowClick = false; return; }   // this click ends a drag, not a tap
   if (S.phase === 'locate') return locateClick(cPos(e));
   if (!canBuild()) {
     // The board is locked while the briefing talks; say so instead of silently ignoring the click.
@@ -840,7 +843,7 @@ canvas.addEventListener('click', e => {
   }
 
   if (!hn && S.budget === 0 && !hs) {
-    setStatus('No sensors left. Right-click (or long-press) a sensor to remove it, or RESET.', 'warn');
+    setStatus('No sensors left. Drag a sensor off the board to remove it, or RESET.', 'warn');
   }
 
   S.selId = null;
@@ -866,36 +869,74 @@ function removeSensor(hs) {
   render();
 }
 
+// Right-click on a sensor removes it too (a desktop shortcut). Touch browsers may fire
+// contextmenu on a long press; while a finger holds a sensor that is the start of a drag.
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
+  if (drag) return;
   if (!canBuild() || !editable()) return;
   const p = cPos(e);
   const hs = hitSensor(p.x, p.y);
   if (hs) removeSensor(hs);
 });
 
-// Touch support: a tap is a click; a long press on a sensor removes it (touch has no right-click).
-const LONG_PRESS = 550;
-let press = null;   // { x, y, timer, fired }
-canvas.addEventListener('touchstart', e => {
-  e.preventDefault();
-  const t = e.touches[0];
-  const at = { clientX: t.clientX, clientY: t.clientY };
-  if (press) clearTimeout(press.timer);
-  press = { ...at, fired: false, timer: setTimeout(() => {
-    if (!press || !hitSensor(cPos(at).x, cPos(at).y)) return;   // long press on empty space = ordinary tap
-    press.fired = true;
-    canvas.dispatchEvent(new MouseEvent('contextmenu', { ...at, cancelable: true }));
-  }, LONG_PRESS) };
-}, { passive: false });
-canvas.addEventListener('touchend', e => {
-  e.preventDefault();
-  if (!press) return;
-  clearTimeout(press.timer);
-  if (!press.fired) canvas.dispatchEvent(new MouseEvent('click', { clientX: press.clientX, clientY: press.clientY }));
-  press = null;
-}, { passive: false });
-canvas.addEventListener('touchcancel', () => { if (press) clearTimeout(press.timer); press = null; });
+// Drag a sensor to move it, or swipe it off the board to remove it. Pointer events work
+// the same for mouse, pen and touch. A press that does not move is an ordinary click / tap.
+const DRAG_START = 10;   // canvas px of movement before a press counts as a drag
+const OUT_MARGIN = 24;   // releasing this close to an edge, or beyond it, removes the sensor
+const SENSOR_R = 26;     // keep a moved sensor fully on the board
+let swallowClick = false;   // set when a drag ends; a mouse drag is followed by one click event
+
+const offBoard = p => p.x < OUT_MARGIN || p.y < OUT_MARGIN || p.x > W - OUT_MARGIN || p.y > H - OUT_MARGIN;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+canvas.addEventListener('pointerdown', e => {
+  swallowClick = false;   // a new press is a new gesture (touch drags are not followed by a click)
+  if (e.button !== 0 || S.phase === 'locate' || !canBuild()) return;
+  const p = cPos(e);
+  const hs = hitSensor(p.x, p.y);
+  if (!hs) return;
+  drag = { s: hs, id: e.pointerId, ox: hs.x, oy: hs.y, dx: p.x - hs.x, dy: p.y - hs.y,
+           sx: p.x, sy: p.y, moved: false, out: false };
+  // keep receiving moves when the finger leaves the board (fails harmlessly for synthetic events)
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* moves inside the board still work */ }
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const p = cPos(e);
+  if (!drag.moved) {
+    if ((p.x - drag.sx) ** 2 + (p.y - drag.sy) ** 2 < DRAG_START ** 2) return;
+    if (!editable()) { drag = null; return; }
+    drag.moved = true;
+  }
+  drag.s.x = clamp(p.x - drag.dx, -SENSOR_R, W + SENSOR_R);
+  drag.s.y = clamp(p.y - drag.dy, -SENSOR_R, H + SENSOR_R);
+  const wasOut = drag.out;
+  drag.out = offBoard(p);
+  if (drag.out !== wasOut || !wasOut) {
+    setStatus(drag.out ? `Release to remove S${drag.s.id + 1}.`
+                       : `Moving S${drag.s.id + 1}. Drag it off the board to remove it.`,
+              drag.out ? 'warn' : 'info');
+  }
+  render();
+});
+
+function endDrag(e, cancelled) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const d = drag;
+  drag = null;
+  if (!d.moved) return;                              // a plain press: the click handler takes over
+  swallowClick = true;                               // the click that may follow is part of the drag
+  if (cancelled) { d.s.x = d.ox; d.s.y = d.oy; render(); return; }
+  if (d.out) { d.s.x = d.ox; d.s.y = d.oy; removeSensor(d.s); return; }
+  d.s.x = clamp(d.s.x, SENSOR_R, W - SENSOR_R);
+  d.s.y = clamp(d.s.y, SENSOR_R, H - SENSOR_R);
+  setStatus(`Moved S${d.s.id + 1}.`, 'info');
+  render();
+}
+canvas.addEventListener('pointerup', e => endDrag(e, false));
+canvas.addEventListener('pointercancel', e => endDrag(e, true));
 
 // ── Test logic ────────────────────────────────────────────────────────────────
 function runTest() {
