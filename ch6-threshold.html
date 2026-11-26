@@ -226,10 +226,10 @@ function levelDone(i) {
   chapter.complete(i);
   const lastLv = chapter.isLast(i);
   bites.finish(lastLv
-    ? '✓ <b>Chapter complete!</b> You know why quantum computers need many physical qubits per logical one — and why pushing hardware below threshold is the race everybody is running. Coming next: Litinski\'s <em>Game of Surface Codes</em>, where whole patches become tiles.'
+    ? '✓ <b>Chapter complete!</b> You know why quantum computers need many physical qubits per logical one — and why pushing hardware below threshold is the race everybody is running. Next: Litinski\'s <em>Game of Surface Codes</em>, where whole patches become tiles.'
     : '✓ <b>Level complete.</b>',
     lastLv
-      ? [{ label: 'BACK TO MAP', onClick: () => (location.href = 'index.html') }]
+      ? [{ label: 'CHAPTER 7 →', onClick: () => (location.href = 'ch7-surgery.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
       : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(i + 1) }]);
 }
 

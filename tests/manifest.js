@@ -8,6 +8,10 @@ window.TEST_MANIFEST = {
     'js/core/sim.js',
     'js/core/hamming.js',
     'js/core/checks.js',
+    'js/core/stab.js',
+    'js/core/tiles.js',
+    'js/core/surgery.js',
+    'js/core/budget.js',
   ],
   tests: [
     'tests/rng.test.js',
@@ -16,5 +20,8 @@ window.TEST_MANIFEST = {
     'tests/sim.test.js',
     'tests/hamming.test.js',
     'tests/checks.test.js',
+    'tests/stab.test.js',
+    'tests/tiles.test.js',
+    'tests/budget.test.js',
   ],
 };

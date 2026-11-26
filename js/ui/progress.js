@@ -39,6 +39,14 @@
       write(p);
     },
     log(chapter) { return (read()[chapter] || {}).log || {}; },
+    // Small extra data a chapter keeps next to its progress, e.g. Chapter 7's last plan.
+    save(chapter, key, value) {
+      const p = read();
+      const c = p[chapter] || {};
+      p[chapter] = { ...c, data: { ...(c.data || {}), [key]: value } };
+      write(p);
+    },
+    load(chapter, key) { return ((read()[chapter] || {}).data || {})[key]; },
     all() { return read(); },
     reset() { write({}); },
   };

@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game of Surface Codes</title>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+#cv { touch-action: none; cursor: pointer; }
+.actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; min-height: 38px; align-items: center; }
+.actions .lbl { font-size: 0.72em; letter-spacing: 2px; color: var(--dim); }
+.actions button.btn { padding: 7px 12px; }
+.chip.job b { color: var(--yellow); }
+.chip.bad b { color: var(--red); }
+.panel {
+  width: min(560px, 100%); margin-top: 12px; padding: 10px 14px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+  font-size: 0.8em; line-height: 1.6; color: var(--text);
+}
+.panel:empty { display: none; }
+.panel h3 { font-size: 0.85em; letter-spacing: 3px; color: var(--cyan-dk); margin-bottom: 6px; font-weight: normal; }
+.panel ol { padding-left: 22px; }
+.panel li.done { color: var(--green); }
+.panel li.done::marker { content: '✓ '; }
+.panel .x { color: var(--x-col); font-weight: bold; }
+.panel .z { color: var(--z-col); font-weight: bold; }
+.panel .ok { color: var(--green); }
+.panel .no { color: var(--red); }
+.panel table { border-collapse: collapse; margin-top: 4px; }
+.panel td, .panel th { padding: 2px 8px; border-bottom: 1px solid #1a2a3a; text-align: left; font-weight: normal; }
+.panel th { color: var(--dim); }
+.bar { height: 10px; background: #0b1828; border-radius: 3px; overflow: hidden; width: 120px; display: inline-block; vertical-align: middle; }
+.bar i { display: block; height: 100%; background: var(--cyan-dk); }
+.dial { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
+.dial button.btn { padding: 5px 8px; letter-spacing: 0; min-width: 44px; }
+.dial button.btn.active { color: var(--cyan); border-color: var(--cyan); }
+.dial button.btn.trend { border-style: dashed; }
+.big { font-size: 1.15em; color: #fff; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="index.html">← MAP</a>
+  <div><div class="eyebrow">CHAPTER 7</div><h1>GAME OF SURFACE CODES</h1></div>
+  <div class="levels" id="levels"></div>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <div class="hud" id="hud"></div>
+    <canvas id="cv" width="560" height="560"></canvas>
+    <div class="actions" id="actions"></div>
+    <div class="controls" id="controls">
+      <button class="btn go" id="btn-go">▶ GO</button>
+      <button class="btn" id="btn-clear">✕ CLEAR</button>
+      <button class="btn" id="btn-retry">↺ START OVER</button>
+      <button class="btn next" id="btn-round">NEXT ROUND →</button>
+    </div>
+    <div class="panel" id="panel"></div>
+    <div class="legend" id="legend">
+      <span><span class="sw" style="border-top:4px solid #ff8822;height:0"></span> Z edge</span>
+      <span><span class="sw" style="border-top:4px dashed #00ccff;height:0"></span> X edge</span>
+      <span><span class="sw" style="background:rgba(180,140,255,.3);border:1px dashed #b48cff"></span> hallway</span>
+      <span><span class="sw" style="background:rgba(0,238,255,.08);border:1px solid rgba(0,238,255,.35)"></span> used tile (counts in TILES)</span>
+    </div>
+    <div class="status info" id="status"></div>
+  </section>
+  <aside class="bites" id="bites"></aside>
+</main>
+
+<script src="js/core/rng.js"></script>
+<script src="js/core/pauli.js"></script>
+<script src="js/core/codes.js"></script>
+<script src="js/core/decoder.js"></script>
+<script src="js/core/sim.js"></script>
+<script src="js/core/stab.js"></script>
+<script src="js/core/tiles.js"></script>
+<script src="js/core/surgery.js"></script>
+<script src="js/core/budget.js"></script>
+<script src="js/ui/progress.js"></script>
+<script src="js/ui/canvas.js"></script>
+<script src="js/ui/bites.js"></script>
+<script src="js/ui/surface.js"></script>
+<script>
+'use strict';
+const P = QEC.Pauli, T = QEC.tiles, S = QEC.stab, G = QEC.surgery, B = QEC.budget;
+const { glow, noGlow, text, pointer } = QEC.ui;
+const COL = QEC.ui.surface.COL;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const rng = QEC.makeRng(QEC.randomSeed());
+const bites = new QEC.ui.Bites($('bites'));
+const CH = 'surgery';   // storage id of this chapter (see index.html)
+bites.logAs = CH;
+const HALL = '#b48cff';
+const sub = s => s.replace(/\d/g, d => '₀₁₂₃₄₅₆₇₈₉'[d]);
+const firstTry = (key, ok) => QEC.progress.note(CH, key, { kind: 'task', ok });
+
+// ── Game state ─────────────────────────────────────────────────────────────
+// b: the board (QEC.tiles), st: the qubits' state (QEC.stab), plan: what the player drew for the next step.
+const G0 = {
+  lv: null, idx: 0, view: 'board',
+  b: null, st: null, tools: {}, round: 0,
+  plan: { hall: new Set(), joins: new Set(), glues: new Set() },
+  sel: null,            // selected patch id
+  cellSel: null,        // selected free tile key (to place a patch)
+  freeTool: 'place',    // free round: a tap on a free tile places a qubit or paints hallway
+  mark: null,           // { cells, segs, until }: what an error refers to
+  bubbles: [],          // floating results
+  readouts: [],         // { c, r, text, col }: where a read patch was, and what it read
+  drag: null,
+};
+let g = G0;
+
+// ── Board geometry ─────────────────────────────────────────────────────────
+let S_ = 110;
+const PAD = 22, PADY = 34;   // room above the board for the lock banner
+function layoutBoard() {
+  const b = g.b;
+  S_ = Math.min(130, Math.floor(540 / b.w), Math.floor(380 / b.h));
+  cv.width = b.w * S_ + 2 * PAD;
+  cv.height = b.h * S_ + PAD + PADY;
+}
+const cellXY = (c, r) => [PAD + c * S_, PADY + r * S_];
+const INSET = 0.13;
+function patchRect(p) {
+  const m = S_ * INSET, [x, y] = cellXY(p.c, p.r);
+  return { x: x + m, y: y + m, w: (p.wide ? 2 : 1) * S_ - 2 * m, h: S_ - 2 * m };
+}
+function segLine(p, s) {
+  const R = patchRect(p), [cx, cy] = cellXY(s.c, s.r), e = 5;
+  const x1 = Math.max(cx, R.x) + e, x2 = Math.min(cx + S_, R.x + R.w) - e;
+  const y1 = Math.max(cy, R.y) + e, y2 = Math.min(cy + S_, R.y + R.h) - e;
+  return { T: [x1, R.y, x2, R.y], B: [x1, R.y + R.h, x2, R.y + R.h], L: [R.x, y1, R.x, y2], R: [R.x + R.w, y1, R.x + R.w, y2] }[s.side];
+}
+
+// What is under the pointer: an edge, a patch, or a tile. With `assist`, a tap on a free tile close
+// to a patch's edge counts as a tap on that edge (edges are thin on a phone).
+function hit(pt, assist = true) {
+  const c = Math.floor((pt.x - PAD) / S_), r = Math.floor((pt.y - PADY) / S_);
+  if (!g.b || !T.inside(g.b, c, r)) return null;
+  const u = (pt.x - PAD) / S_ - c, v = (pt.y - PADY) / S_ - r;
+  const p = T.owner(g.b, c, r);
+  const dist = { T: v, B: 1 - v, L: u, R: 1 - u };
+  if (!p) {
+    if (assist) {
+      let near = null;
+      for (const side of ['T', 'R', 'B', 'L']) {
+        const [dc, dr] = T.STEP[side], s = T.segAt(g.b, c + dc, r + dr, T.OPP[side]);
+        if (s && dist[side] < 0.2 && (!near || dist[side] < dist[near.side2])) near = { s, side2: side };
+      }
+      if (near) return { type: 'seg', seg: near.s, patch: T.owner(g.b, near.s.c, near.s.r), cell: T.key(c, r) };
+    }
+    return { type: 'cell', c, r, key: T.key(c, r) };
+  }
+  const segs = T.segsOf(p).filter(s => s.c === c && s.r === r);
+  let best = null;
+  for (const s of segs) if (dist[s.side] < 0.27 && (!best || dist[s.side] < dist[best.side])) best = s;
+  return best ? { type: 'seg', seg: best, patch: p } : { type: 'patch', patch: p };
+}
+
+// ── Levels ─────────────────────────────────────────────────────────────────
+const job = s => P.fromString(s);
+const labelOf = q => { const p = g.b && g.b.patches.find(x => x.q === q); return p ? p.label : (g.labels || [])[q]; };
+const opName = op => T.opText(op, labelOf);
+
+const LEVELS = [
+  // ── 1 ONE TILE ──
+  {
+    name: 'ONE TILE', view: 'zoom',
+    start() { zoomStart(); },
+    bites: [
+      'Your distance-3 patch from Chapter 5: nine qubits that store <b>one</b> protected qubit. A computer needs many of these, side by side. So let\'s see what a patch looks like from far away.',
+      { t: 'Remember the chain that crossed the patch and flipped the stored qubit without lighting a single check? Here is the <span class="z">Z</span> one: three Z flips in a row. Drag it up until it lies along the top edge.', wait: 'slide-z', hint: 'drag the Z chain to the edge (or use ▲ ▼)' },
+      'Any row works: the checks can\'t tell them apart. So the top edge <b>carries</b> the stored qubit\'s Z, and so does the bottom edge. We draw them <span class="z">solid orange</span>.',
+      { t: 'Now the <span class="x">X</span> chain, a column of X flips. Drag it onto the left edge.', wait: 'slide-x', hint: 'drag the X chain to the edge (or use ◀ ▶)' },
+      'The left and right edges carry its X. We draw them <span class="x">dashed cyan</span>.',
+      { t: 'Now step back from the patch.', wait: 'zoom', hint: 'press 🔍 ZOOM OUT' },
+      'From far away a patch is just a <b>tile</b> with two Z edges and two X edges. The checks are still there, working all the time, but we no longer need to see them. Daniel Litinski turned such tiles into a board game for designing quantum computers: <em>A Game of Surface Codes</em>. You\'re about to play it.',
+    ],
+  },
+
+  // ── 2 GLUE ──
+  {
+    name: 'GLUE', board: 'glue', rounds: 3,
+    tools: { move: true, glue: true, read: ['Z'] },
+    start() { this.done = 0; this.newRound(); },
+    newRound() {
+      setBoard('glue', 'X');
+      g.round = this.done;
+      this.glued = null; this.reads = {};
+      setJob('ZZ');
+    },
+    hud() { return [['ROUNDS DONE', `${this.done}/${this.rounds}`]]; },
+    afterMove() {
+      const touch = T.borders(g.b);
+      if (touch.some(x => x.ta === 'Z' && x.tb === 'Z')) { bites.notify('place'); status('Their orange Z edges touch. Tap that border to glue it.', 'info'); }
+      else if (touch.length) status('They touch, but with cyan X edges. A glue there would ask about X, not Z.', 'warn');
+    },
+    afterStep(ms, outs) {
+      const m = ms[0], ok = P.equal(m.op, g.job);
+      firstTry('glue-first', ok);
+      if (ok) {
+        this.glued = outs[0].outcome;
+        status(`GLUE answered ${sign(outs[0].outcome)}: ${outs[0].outcome > 0 ? 'equal' : 'different'}.`, 'success');
+        bites.notify('glue');
+      } else {
+        if (this.glued === null) this.glued = 'wrong';   // a Z glue earlier in the round still counts
+        status(`You asked ${opName(m.op)}, but the job is ${opName(g.job)}. The answer is a sure +1: both started as |+⟩, so this question told you nothing new. Read them anyway, or START OVER.`, 'warn');
+        QEC.ui.fx.nudge(cv);
+      }
+    },
+    afterRead(p, basis, out) {
+      this.reads[p.label] = out;
+      if (!('q1' in this.reads && 'q2' in this.reads)) return;
+      const a = bit(this.reads.q1), c = bit(this.reads.q2);
+      if (this.glued === null || this.glued === 'wrong') {
+        status(`q1 read ${a}, q2 read ${c}. Without a Z glue first, that is just two separate coin tosses. START OVER to try again.`, 'warn');
+        return;
+      }
+      const agree = (a === c) === (this.glued > 0);
+      status(`q1 read ${a}, q2 read ${c}: ${a === c ? 'equal' : 'different'}, just as GLUE said.`, agree ? 'success' : 'error');
+      QEC.ui.fx.good(cv);
+      this.done++;
+      bites.notify('read');
+      if (this.done >= this.rounds) bites.notify('rounds');
+      else g.canNextRound = true;
+    },
+    bites: [
+      'Job: find out whether q1 and q2 are <b>equal</b>, without reading either one. In Chapter 3 a checker between two qubits asked exactly this. Now ask it about two <em>protected</em> qubits. Both start as |+⟩: read one, and it is a fair coin, 0 or 1.',
+      { t: 'Drag q2 so that an <span class="z">orange</span> edge of q2 touches an orange edge of q1. A move costs 1 time step.', wait: 'place', hint: 'drag q2' },
+      { t: 'Tap the border where they touch, then press ▶ GO. For one time step the gap between them gets new checks.', wait: 'glue', hint: 'tap the shared border, then ▶ GO' },
+      { t: 'Each new check in the gap lights at random. Their <b>product</b> doesn\'t: it is Z₁·Z₂, the parity of the two stored qubits.', onShow: () => bites.feedback(`You got <b>${sign(LEVELS[1].glued)}</b>: ${LEVELS[1].glued > 0 ? 'equal' : 'different'}.`) },
+      { t: 'Now read both tiles in Z. Will the two results match what GLUE said?', ask: ['Always', 'About half the time', 'Never', 'Can\'t say'], answer: 0, kind: 'predict', id: 'glue-read' },
+      { t: 'Read both: tap a tile, then READ Z.', wait: 'read', hint: 'tap a tile → READ Z, for both' },
+      'Before GLUE each tile was a coin toss. It still is, but now both coins land the way GLUE said. Physicists call that <b>entangled</b>, and the move you just made <b>lattice surgery</b>.',
+      { t: 'Two more rounds, to see that it holds every time. Each GLUE result is random; the reads always match it.', wait: 'rounds', hint: 'NEXT ROUND, then move, glue, read' },
+    ],
+  },
+
+  // ── 3 HALLWAY ──
+  {
+    name: 'HALLWAY', board: 'hallway',
+    tools: { hall: true, widen: false },
+    start() { this.k = 0; this.newRound(); },
+    // START OVER: a fresh board, but the jobs already done stay done, so card and briefing agree
+    newRound() {
+      setBoard('hallway', 'X');
+      setJob(G.JOBS.hallway[this.k] || null);
+      g.tools.widen = this.k >= 3;
+    },
+    hud() { return [['JOBS DONE', `${this.k}/4`]]; },
+    afterStep(ms, outs) {
+      const i = ms.findIndex(m => P.equal(m.op, g.job));
+      if (i < 0) {
+        status(`You asked ${ms.map(m => opName(m.op)).join(' and ')}, but the job is ${opName(g.job)}. Join exactly the edges the card names, in one piece of hallway.`, 'warn');
+        QEC.ui.fx.nudge(cv);
+        return;
+      }
+      status(`✓ ${opName(g.job)} answered ${sign(outs[i].outcome)}, in 1 step.`, 'success');
+      QEC.ui.fx.good(cv);
+      this.k++;
+      if (this.k < G.JOBS.hallway.length) setJob(G.JOBS.hallway[this.k]); else g.job = null;
+      if (this.k === 3) g.tools.widen = true;
+      bites.notify('job');
+    },
+    bites: [
+      'q1 and q3 are far apart, and in this level tiles stay where they are. Instead of moving them, build a <b>hallway</b>: paint free tiles between them.',
+      { t: 'A hallway two tiles long takes 1 time step. How long would a six-tile hallway take?', ask: ['1 step', '3 steps', '6 steps', 'It can\'t reach that far'], answer: 0, kind: 'predict', id: 'hallway-steps' },
+      { t: 'Job <b>Z₁·Z₃</b>. Paint a hallway (tap or drag over free tiles), tap the two <span class="z">orange</span> edges it should join, then press ▶ GO.', wait: 'job', hint: 'paint, join two edges, ▶ GO' },
+      '1 step, whatever the length. A longer hallway costs <b>tiles</b>, not time.',
+      { t: 'A hallway can join any number of edges. It asks for the product of all of them, like a sensor from Chapter 1 wired to many nodes. Job <b>Z₁·Z₃·Z₄</b>.', wait: 'job', hint: 'join three Z edges, ▶ GO' },
+      { t: 'Now the card wants q2\'s <span class="x">X</span>: its cyan edge. Job <b>X₂·Z₃</b>.', wait: 'job', hint: 'join q2\'s X edge and q3\'s Z edge' },
+      { t: 'Last job: <b>Y₂</b>. Y is X and Z together (Chapter 5), so join both an X and a Z edge of q2. A square tile never shows both on one side. So tap q2 and <b>WIDEN</b> it (1 step), then join the two edges on its top side.', wait: 'job', hint: 'tap q2 → WIDEN ▸, then join both top edges' },
+      'Simplified: a real Y measurement also needs a small twist in the hallway. The game does that part for you.',
+    ],
+  },
+
+  // ── 4 XOR ──
+  {
+    name: 'XOR', board: 'xor',
+    tools: { glue: true, read: ['Z'], readOnly: 'h', turn: true, place: { label: 'h', q: 1, basis: 'X' } },
+    start() { this.newRound(); },
+    newRound() {
+      setBoard('xor', 'Z');
+      g.labels = ['c', 'h', 't'];
+      this.record = [];
+      setJob(null);
+      renderRecipe();
+    },
+    // a new h starts a new try: questions asked of an earlier h no longer belong to the recipe
+    afterPlace() { this.record = []; renderRecipe(); },
+    afterStep(ms) {
+      for (const m of ms) this.record.push({ op: m.op });
+      renderRecipe();
+    },
+    afterRead(p, basis) {
+      const res = G.xorTest([...this.record, { read: basis }], rng);
+      firstTry('xor-first', res.ok);
+      renderRecipe(res);
+      if (res.ok) {
+        status(`✓ The recipe works: ${g.b.steps} steps, ${T.tiles(g.b)} tiles.`, 'success');
+        QEC.ui.fx.good(cv);
+        bites.notify('xor-ok');
+      } else {
+        status('The recipe did not run: see the test below. START OVER and try another spot for h.', 'error');
+        QEC.ui.fx.bad(cv);
+      }
+    },
+    bites: [
+      'Programs need gates, not just questions. Here is the quantum XOR, called <b>CNOT</b>: t becomes t XOR c. It is built from two GLUEs and a helper tile h. See the recipe card below the board.',
+      'You don\'t need to see <em>why</em> the recipe works. The game tests your plan on all four inputs, and on one in-between input. Your job: place h so that it can do both GLUEs.',
+      { t: 'Tap a free tile to place h (in |+⟩, 0 steps). A fresh tile may still TURN for free. Then glue, glue, and read h.', wait: 'xor-ok', hint: 'follow the recipe card' },
+      { t: 'On 0s and 1s it is XOR. On the in-between input it made an <b>entangled pair</b>: equal in Z and equal in X. Reading c and flipping t could never do that, and quantum algorithms are built on it.',
+        onShow: () => bites.feedback(`Your CNOT took <b>${g.b.steps} step${g.b.steps === 1 ? '' : 's'} and ${T.tiles(g.b)} tiles</b>. With h in the corner next to both, it takes 2 steps and 3 tiles.`) },
+    ],
+  },
+
+  // ── 5 TILES OR STEPS ──
+  {
+    name: 'TILES OR STEPS',
+    start() { this.scores = {}; this.setRound('compact'); },
+    setRound(name) {
+      this.rn = name;
+      g.labels = G.FREE_LABELS;
+      const tools = {
+        compact: { hall: true, turn: true },
+        wide: { hall: true },
+        free: { hall: true, glue: true, turn: true, widen: true, move: true, place: { labels: G.FREE_LABELS, basis: 'Z' } },
+      }[name];
+      setBoard(name, 'Z', tools);
+      this.k = new Set();
+      setJob(name === 'free' ? null : G.JOBS[name][0]);
+      g.freeTool = 'place';
+      renderJobs();
+    },
+    hud() {
+      const b = g.b;
+      return [['TILES × STEPS', `${T.tiles(b)} × ${b.steps} = ${T.tiles(b) * b.steps}`]];
+    },
+    afterPlace() { if (g.b.patches.length === 4) g.freeTool = 'hall'; renderJobs(); },
+    afterStep(ms) {
+      const jobs = G.JOBS[this.rn];
+      const hits = ms.filter(m => jobs.some(j => P.equal(m.op, job(j))));
+      for (const m of hits) this.k.add(P.toString(m.op));
+      const miss = ms.filter(m => !hits.includes(m));
+      renderJobs();
+      if (miss.length) {
+        status(`${miss.map(m => opName(m.op)).join(' and ')} is not on the job list. It still cost a step.`, 'warn');
+        QEC.ui.fx.nudge(cv);
+      }
+      if (this.k.size < jobs.length) { if (hits.length) status(`✓ ${hits.map(m => opName(m.op)).join(' and ')} done.`, 'success'); return; }
+      const score = { tiles: T.tiles(g.b), steps: g.b.steps };
+      this.scores[this.rn] = score;
+      const s = score.tiles * score.steps;
+      QEC.ui.fx.good(cv);
+      if (this.rn === 'free') {
+        const par = G.PAR.free.tiles * G.PAR.free.steps;
+        firstTry('budget-first', s <= 1.25 * par);
+        QEC.progress.save(CH, 'plan', snapshot());
+        status(s <= par
+          ? `✓ All three jobs: ${score.tiles} tiles × ${score.steps} steps = ${s}. ${s < par ? 'You beat our best plan (' + par + ')!' : 'As good as our best plan.'}`
+          : `✓ All three jobs: ${score.tiles} tiles × ${score.steps} steps = ${s}. Our best plan scores ${par}. Tip: two questions on different patches can share a step, and a tile you use again is not paid twice.`, 'success');
+        bites.notify('roundC');
+      } else {
+        status(`✓ ${score.tiles} tiles × ${score.steps} steps = ${s}.`, 'success');
+        bites.notify(this.rn === 'compact' ? 'roundA' : 'roundB');
+      }
+    },
+    bites: [
+      'Litinski scores a plan with two numbers: <b>tiles</b> (every tile it ever uses) and <b>steps</b>. A real chip pays for every tile in every step, so the score is TILES × STEPS. Lower is better.',
+      { t: 'A compact row: four tiles over a grey <b>lane</b> that is kept free for hallways. Only Z edges face the lane, but job <b>X₂·Z₃</b> needs q2\'s X. Tap q2 and <b>TURN</b> it (3 steps; it borrows a lane tile while it turns), then build the hallway.', wait: 'roundA', hint: 'TURN q2, then hallway, ▶ GO' },
+      { t: 'The same job, but now every qubit sits in a <b>wide</b> patch that shows both edges on the lane side. No turning needed.', wait: 'roundB', hint: 'hallway, ▶ GO', onShow: () => LEVELS[4].setRound('wide') },
+      { t: 'Compare.', onShow: () => { const s = LEVELS[4].scores, f = x => `<b>${x.tiles} tiles × ${x.steps} steps = ${x.tiles * x.steps}</b>`; bites.feedback(`Compact: ${f(s.compact)}. Wide: ${f(s.wide)}. Fewer tiles, or fewer steps: that is the trade.`); } },
+      { t: 'A program that needs only Z edges, say Z₂·Z₃. Which layout is cheaper now?', ask: ['The compact row', 'The wide row', 'Both the same'], answer: 0, kind: 'check', id: 'layout-cheaper',
+        reply: (i, ok) => `${ok ? '✓ Right.' : '✗ Not quite: the compact row.'} Compact: 4 tiles + 2 hallway tiles, 1 step = 6. Wide: 8 tiles + 3 hallway tiles, 1 step = 11. Which is cheaper depends on the program. That is why real designs come in several sizes.` },
+      { t: 'Now you design. An empty board, four qubits to place, and three jobs: <b>Z₁·Z₂</b>, <b>X₃·X₄</b> and <b>Z₁·Z₂·Z₃·Z₄</b>. They don\'t disturb each other, so any order works. Aim for a low TILES × STEPS.', wait: 'roundC', hint: 'place q1–q4, then do the three jobs', onShow: () => LEVELS[4].setRound('free') },
+      'Litinski\'s compact, intermediate and fast blocks are exactly this trade, for a hundred qubits at once. Your plan comes along to the next level.',
+    ],
+  },
+
+  // ── 6 HOW BIG A TILE? ──
+  {
+    name: 'HOW BIG A TILE?', view: 'lab',
+    start() { labStart(); },
+    bites: [
+      'So far a tile was just a tile. Underneath, each one is a d × d patch from Chapter 5, and a step is a round of checks on it. A bigger d protects better, but costs more qubits. Which d does <b>your</b> plan need?',
+      { t: 'First measure how often one tile fails in one step. This is the Chapter 6 lab, at one glitch rate: p = 1%, ten times below this model\'s threshold.', wait: 'lab', hint: 'press ▶ RUN THE LAB' },
+      { t: 'Your plan may fail at most <b>1 time in 100</b> runs. Pick the <b>smallest</b> d that is safe, then LOCK IN. RUN 1000 TIMES lets you try a d first.', wait: 'pick-d', hint: 'pick d, LOCK IN' },
+      { t: 'Your program grows <b>1000× longer</b>. Which d keeps it safe now?', ask: ['The same d is still enough', 'A few sizes bigger', 'About 1000 times bigger', 'No d is enough'], answer: 1, kind: 'check', id: 'scale-d',
+        reply: (i, ok) => `${ok ? '✓ Right.' : '✗ Not quite: a few sizes bigger.'} ${scaleText()} Try ×1000 next to the dial.` },
+      'Errors fall off a cliff as d grows: every +2 divides them by the same factor. So a 1000× bigger job needs only a few more rings of qubits. That holds only <b>below threshold</b>. Lab B from Chapter 6, at 15%, could pick any d and still lose.',
+      'Honest numbers: this lab uses Chapter 6\'s model, where checks never misfire (threshold about 10%). Real checks misfire, so a real step repeats the checks about d times, like the repetition code but in time, and the threshold drops to about 1%.',
+      'Litinski ran these numbers for a real job: 100 qubits and 100 million T gates (the bonus level says what those are). At p = 0.1% he needs d = 27: about <b>310 000 qubits for 7 hours</b>, or 1 000 000 qubits for 45 minutes if you spend more tiles.',
+    ],
+  },
+
+  // ── 7 MAGIC (bonus) ──
+  {
+    name: 'MAGIC', board: 'magic',
+    tools: { hall: true },
+    start() { setBoard('magic', 'X'); setJob('ZZ'); g.labels = ['q1', 'm']; this.factories = 1; this.ran = null; this.consumed = false; },
+    afterStep(ms) {
+      if (!ms.some(m => P.equal(m.op, g.job))) {
+        status(`You asked ${ms.map(m => opName(m.op)).join(' and ')}; the job joins q1's Z edge and the magic tile's Z edge.`, 'warn');
+        return;
+      }
+      const m = T.byLabel(g.b, 'm');
+      T.remove(g.b, m.id);
+      g.unknown = new Set(['q1']);
+      this.consumed = true;
+      setJob(null);
+      status('✓ Magic state used in 1 step. The magic tile was read out and removed (0 steps).', 'success');
+      bites.notify('consume');
+    },
+    bites: [
+      'Everything so far, your browser simulated with a few bits per qubit. That is no accident: circuits made only of these parity questions can always be simulated quickly on a normal computer. To beat a laptop, a quantum computer needs one more ingredient: the <b>magic state</b>.',
+      { t: 'Using one is a move you know. Job: a hallway that joins q1\'s Z edge and the magic tile\'s (★) Z edge. This is a T gate on q1.', wait: 'consume', hint: 'hallway from q1 to ★, ▶ GO' },
+      'See the <b>?</b> on q1. Our fast tracker can\'t follow magic states. A full simulation needs 2ⁿ numbers: fine for 6 qubits, hopeless for 100. This is where a quantum computer starts to pay off.',
+      'Magic states come out noisy. So a <b>factory</b> takes 15 noisy ones, runs checks, and throws the batch away if any check lights: Chapters 1 and 3 again. Litinski\'s factory uses 11 tiles for 11 steps per good magic state, and lowers its error from p to 35p³.',
+      { t: 'Your program needs 6 magic states, one per T gate. One factory makes one every 11 steps. About how many steps will the program take?', ask: ['About 6', 'About 11', 'About 66', 'About 660'], answer: 2, kind: 'predict', id: 'magic-time', onAnswer: () => factoryView() },
+      { t: 'Run it with one factory.', wait: 'run1', hint: 'press ▶ RUN' },
+      { t: 'Too slow. Finish in <b>under 40 steps</b>: add factories (11 tiles each), then RUN again.', wait: 'fast', hint: '+ FACTORY, ▶ RUN' },
+      'The factory, not your qubits, sets the pace. Litinski: with p = 0.01%, one factory runs his 100-qubit job in 4 hours on 55 000 qubits; with 11 factories it takes 22 minutes on 120 000.',
+    ],
+  },
+];
+
+// ── Setting up a board ─────────────────────────────────────────────────────
+function setBoard(name, basis, tools) {
+  g.b = G.board(name);
+  g.st = S.create(g.b.nq);
+  for (const p of g.b.patches) S.reset(g.st, p.q, p.kind === 'magic' ? 'Z' : basis, rng);
+  g.tools = { ...(tools || g.lv.tools || {}) };
+  g.view = 'board';
+  g.labels = g.b.patches.map(p => p.label);
+  g.unknown = new Set();
+  g.readouts = []; g.bubbles = []; g.lastFlash = null; g.mark = null;
+  g.canNextRound = false;
+  clearPlan();
+  layoutBoard();
+  update();
+}
+
+function setJob(s) { g.job = s ? job(s) : null; update(); }
+function clearPlan() { g.plan = { hall: new Set(), joins: new Set(), glues: new Set() }; g.sel = null; g.cellSel = null; }
+const sign = v => (v > 0 ? '+1' : '−1');
+const bit = v => (v > 0 ? 0 : 1);
+
+// ── Player actions on the board ─────────────────────────────────────────────
+function locked() {
+  if (bites.open) return false;
+  status('The board is locked while you read. Press NEXT → in the briefing first.', 'warn');
+  QEC.ui.fx.nudge($('bites'));
+  return true;
+}
+
+function refuse(why, mark) {
+  status(why, 'warn');
+  if (mark) g.mark = { cells: mark.cells || [], segs: mark.segs || [], until: performance.now() + 2600 };
+  QEC.ui.fx.nudge(cv);
+}
+
+function tapSeg(s) {
+  const gk = T.glueAt(g.b, s);
+  if (gk) {
+    if (!g.tools.glue) return refuse('In this level tiles do not glue directly. Use a hallway.');
+    g.plan.glues.has(gk) ? g.plan.glues.delete(gk) : g.plan.glues.add(gk);
+  } else {
+    if (!g.tools.hall) return refuse(g.tools.glue ? 'This edge touches no other tile. A glue needs two tiles whose edges touch.' : 'Nothing to join here.');
+    const k = T.segKey(s);
+    g.plan.joins.has(k) ? g.plan.joins.delete(k) : g.plan.joins.add(k);
+  }
+  g.sel = null;
+  QEC.ui.fx.tick();
+  update();
+}
+
+function paint(key, on) {
+  if (on) g.plan.hall.add(key); else g.plan.hall.delete(key);
+}
+
+function tapCell(h) {
+  const placing = g.tools.place && (!g.tools.hall || g.freeTool === 'place');
+  if (placing) { g.cellSel = g.cellSel === h.key ? null : h.key; g.sel = null; update(); return; }
+  if (!g.tools.hall) return refuse('Nothing to do on an empty tile here.');
+}
+
+function selectPatch(p) {
+  g.sel = g.sel === p.id ? null : p.id;
+  g.cellSel = null;
+  update();
+}
+
+function tryMove(p, c, r) {
+  if (!g.tools.move) return refuse(g.lv.name === 'XOR' ? 'c and t stay where they are: the rest of the program needs them there.' : 'In this level tiles stay where they are.');
+  const res = T.move(g.b, p.id, c, r);
+  if (!res.ok) return refuse(res.why, res.mark);
+  for (const t of T.cellsOf(p)) g.plan.hall.delete(T.key(t.c, t.r));
+  dropStaleJoins();
+  status(res.cost ? `${p.label} moved: 1 step.` : `${p.label} placed elsewhere: still fresh, 0 steps.`, 'info');
+  if (g.lv.afterMove) g.lv.afterMove();
+  update();
+}
+
+// Joins and glues on edges that moved away no longer mean anything.
+function dropStaleJoins() {
+  for (const k of [...g.plan.joins]) { const [c, r, side] = k.split(','); if (!T.segAt(g.b, +c, +r, side)) g.plan.joins.delete(k); }
+  for (const k of [...g.plan.glues]) { const [a, z] = T.borderSegs(g.b, k); if (!a || !z || T.glueAt(g.b, a) !== k) g.plan.glues.delete(k); }
+}
+
+function doTurn(p) {
+  const res = T.turn(g.b, p.id);
+  if (!res.ok) return refuse(res.why, res.mark);
+  dropStaleJoins();
+  status(res.cost ? `${p.label} turned: 3 steps.` : `${p.label} turned. It was fresh, so it simply starts this way round: 0 steps.`, 'info');
+  update();
+}
+
+function doWiden(p, dir) {
+  const res = T.widen(g.b, p.id, dir);
+  if (!res.ok) return refuse(res.why, res.mark);
+  for (const t of T.cellsOf(p)) g.plan.hall.delete(T.key(t.c, t.r));   // the patch now stands there
+  dropStaleJoins();
+  status(`${p.label} widened: ${res.cost} step${res.cost === 1 ? '' : 's'}. Its ${T.patch(g.b, p.id).mixed === 'T' ? 'top' : 'bottom'} side now shows an X and a Z edge.`, 'info');
+  update();
+}
+
+function doRead(p, basis) {
+  const op = P.on(g.b.nq, [p.q], basis);
+  const out = S.measure(g.st, op, rng).outcome;
+  const R = patchRect(p);
+  const txt = basis === 'Z' ? String(bit(out)) : out > 0 ? '+' : '−';
+  g.readouts.push({ x: R.x + R.w / 2, y: R.y + R.h / 2, label: p.label, text: txt });
+  T.remove(g.b, p.id);
+  dropStaleJoins();
+  g.sel = null;
+  status(`${p.label} read in ${basis}: ${txt}. The tile is gone (0 steps).`, 'info');
+  if (g.lv.afterRead) g.lv.afterRead(p, basis, out);
+  update();
+}
+
+function doPlace(key, tb) {
+  const pl = g.tools.place, [c, r] = T.unkey(key);
+  const used = g.b.patches.map(p => p.label);
+  const label = pl.labels ? pl.labels.find(l => !used.includes(l)) : pl.label;
+  if (!label || used.includes(label)) return refuse(pl.labels ? 'All four qubits are on the board.' : `There is already an ${pl.label}.`);
+  const q = pl.labels ? pl.labels.indexOf(label) : pl.q;
+  const res = T.place(g.b, { label, q, c, r, tb });
+  if (!res.ok) return refuse(res.why, res.mark);
+  S.reset(g.st, q, pl.basis || 'Z', rng);
+  g.plan.hall.delete(key);
+  g.cellSel = null;
+  status(`${label} placed (0 steps). While it is fresh you may still move or turn it for free.`, 'info');
+  if (g.lv.afterPlace) g.lv.afterPlace();
+  update();
+}
+
+function go() {
+  if (locked()) return;
+  const res = T.measurements(g.b, g.plan);
+  if (!res.ok) return refuse(res.why, res.mark);
+  const outs = res.ms.map(m => S.measure(g.st, m.op, rng));
+  T.book(g.b, res.ms);
+  const now = performance.now();
+  res.ms.forEach((m, i) => {
+    let x, y;
+    if (m.cells.length) {
+      const pts = m.cells.map(k => cellXY(...T.unkey(k)));
+      x = pts.reduce((a, p) => a + p[0], 0) / pts.length + S_ / 2;
+      y = pts.reduce((a, p) => a + p[1], 0) / pts.length + S_ / 2;
+    } else {
+      const [a, z] = m.segs.map(s => segLine(T.owner(g.b, s.c, s.r), s));
+      x = (a[0] + a[2] + z[0] + z[2]) / 4; y = (a[1] + a[3] + z[1] + z[3]) / 4;
+    }
+    const magic = m.patches.some(p => p.kind === 'magic');   // the tracker can't follow magic states
+    g.bubbles.push({ x, y, text: `${opName(m.op)} = ${magic ? '?' : sign(outs[i].outcome)}`, t0: now, col: '#ffee00' });
+  });
+  g.lastFlash = { cells: res.ms.flatMap(m => m.cells), segs: res.ms.flatMap(m => m.segs.map(T.segKey)), t0: now };
+  clearPlan();
+  if (g.lv.afterStep) g.lv.afterStep(res.ms, outs);
+  update();
+}
+
+// ── Pointer input: tap edges, tap or drag tiles, drag patches ──────────────
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  if (g.view === 'zoom') return zoomDown(e);
+  if (g.view !== 'board') return;
+  const pt = pointer(cv, e);
+  const h = hit(pt);
+  g.drag = { id: e.pointerId, start: pt, h, moved: false, paint: null };
+  if (h && h.type === 'cell' && g.tools.hall && !(g.tools.place && g.freeTool === 'place') && bites.open) {
+    g.drag.paint = !g.plan.hall.has(h.key);
+    paint(h.key, g.drag.paint);
+    g.cellSel = null; g.sel = null;
+    update();
+  }
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => {
+  if (g.view === 'zoom') return zoomMove(e);
+  const d = g.drag;
+  if (!d || d.id !== e.pointerId) return;
+  const pt = pointer(cv, e);
+  d.at = pt;
+  if (Math.hypot(pt.x - d.start.x, pt.y - d.start.y) > 10) d.moved = true;
+  // a drag that starts on a free tile next to an edge paints, like any drag over free tiles
+  if (d.moved && d.paint === null && d.h && d.h.cell && g.tools.hall && !(g.tools.place && g.freeTool === 'place') && bites.open) {
+    d.paint = !g.plan.hall.has(d.h.cell);
+    paint(d.h.cell, d.paint);
+    update();
+  }
+  if (d.paint !== null) {
+    const h = hit(pt, false);
+    if (h && h.type === 'cell' && g.plan.hall.has(h.key) !== d.paint) { paint(h.key, d.paint); update(); }
+  }
+});
+cv.addEventListener('pointerup', e => {
+  if (g.view === 'zoom') return zoomUp(e);
+  const d = g.drag;
+  g.drag = null;
+  if (!d || d.id !== e.pointerId || g.view !== 'board') return;
+  if (d.paint !== null) return;
+  if (locked()) return;
+  const h = d.h;
+  if (!h) return;
+  if (h.type === 'patch' || (h.type === 'seg' && d.moved && !h.cell)) {
+    if (!d.moved) return selectPatch(h.patch);
+    // the patch moves by as many tiles as the pointer did (a wide patch may be grabbed by either half)
+    const [c, r] = dragTarget(d, pointer(cv, e));
+    if (c === h.patch.c && r === h.patch.r) return;
+    return tryMove(h.patch, c, r);
+  }
+  if (h.type === 'seg') return tapSeg(h.seg);
+  if (h.type === 'cell') return tapCell(h);
+});
+cv.addEventListener('pointercancel', () => { g.drag = null; });
+const cellOf = pt => [Math.floor((pt.x - PAD) / S_), Math.floor((pt.y - PADY) / S_)];
+function dragTarget(d, pt) {
+  const [c0, r0] = cellOf(d.start), [c1, r1] = cellOf(pt), p = d.h.patch;
+  return [p.c + c1 - c0, p.r + r1 - r0];
+}
+
+// ── Buttons ────────────────────────────────────────────────────────────────
+$('btn-go').onclick = go;
+$('btn-clear').onclick = () => { clearPlan(); update(); };
+$('btn-retry').onclick = () => {
+  if (locked()) return;
+  if (g.lv.newRound) g.lv.newRound();
+  else if (g.lv.setRound) g.lv.setRound(g.lv.rn);
+  else g.lv.start();
+  status('Fresh start.', 'info');
+};
+$('btn-round').onclick = () => { if (locked()) return; if (g.lv.newRound) g.lv.newRound(); status('New round: both tiles start as |+⟩ again.', 'info'); };
+
+function btn(label, onClick, cls = '', title = '') {
+  const b = document.createElement('button');
+  b.className = 'btn ' + cls;
+  b.innerHTML = label;
+  if (title) b.title = title;
+  b.onclick = () => { if (!locked()) onClick(); };
+  return b;
+}
+
+// The row under the board: what you can do with the selected patch or tile.
+function renderActions() {
+  const el = $('actions');
+  el.innerHTML = '';
+  if (g.view === 'zoom') { zoomActions(el); return; }
+  if (g.view !== 'board') return;
+  const t = g.tools;
+  if (t.place && t.hall) {
+    const span = document.createElement('span');
+    span.className = 'lbl'; span.textContent = 'TAP A FREE TILE TO';
+    el.appendChild(span);
+    el.appendChild(btn('+ PLACE QUBIT', () => { g.freeTool = 'place'; update(); }, g.freeTool === 'place' ? 'active' : ''));
+    el.appendChild(btn('~ PAINT HALLWAY', () => { g.freeTool = 'hall'; g.cellSel = null; update(); }, g.freeTool === 'hall' ? 'active' : ''));
+  }
+  const p = g.sel && T.patch(g.b, g.sel);
+  if (p) {
+    const span = document.createElement('span');
+    span.className = 'lbl'; span.textContent = p.label.toUpperCase() + ':';
+    el.appendChild(span);
+    const acts = [];
+    const mayRead = t.read && (!t.readOnly || t.readOnly === p.label);
+    if (mayRead) for (const basis of t.read) acts.push(btn(`READ ${basis}`, () => doRead(p, basis), 'tool-' + basis));
+    if (t.turn && !p.wide) acts.push(btn(p.fresh ? 'TURN (free)' : 'TURN (3 steps)', () => doTurn(p)));
+    if (t.widen && !p.wide) acts.push(btn('◂ WIDEN', () => doWiden(p, 'L')), btn('WIDEN ▸', () => doWiden(p, 'R')));
+    const note = t.move ? 'drag it to move' : acts.length ? '' : 'nothing to do with the tile itself here: tap its edges';
+    acts.forEach(a => el.appendChild(a));
+    if (note) { const s2 = document.createElement('span'); s2.className = 'lbl'; s2.textContent = note; el.appendChild(s2); }
+  } else if (g.cellSel && t.place) {
+    el.appendChild(btn('+ NEW (Z edges ═ top/bottom)', () => doPlace(g.cellSel, 'Z')));
+    el.appendChild(btn('+ NEW (Z edges ‖ left/right)', () => doPlace(g.cellSel, 'X')));
+  }
+}
+
+// ── HUD and controls ───────────────────────────────────────────────────────
+function update() {
+  const lv = g.lv;
+  if (!lv) return;
+  const hud = $('hud');
+  const chips = [];
+  if (g.view === 'board' && g.b) {
+    if (g.job) chips.push(`<div class="chip job">JOB <b>${opName(g.job)}</b></div>`);
+    chips.push(`<div class="chip">TILES <b>${T.tiles(g.b)}</b></div>`, `<div class="chip">STEPS <b>${g.b.steps}</b></div>`);
+  }
+  if (lv.hud && g.view === 'board') for (const [k, v] of lv.hud()) chips.push(`<div class="chip">${k} <b>${v}</b></div>`);
+  hud.innerHTML = chips.join('');
+  const onBoard = g.view === 'board';
+  const anyPlan = g.plan.hall.size + g.plan.joins.size + g.plan.glues.size > 0;
+  $('controls').style.display = onBoard ? '' : 'none';
+  $('legend').style.display = onBoard ? '' : 'none';
+  $('btn-go').disabled = !bites.open || !anyPlan;
+  $('btn-clear').disabled = !anyPlan;
+  $('btn-round').style.display = g.canNextRound ? '' : 'none';
+  $('btn-retry').style.display = lv.view ? 'none' : '';
+  // panels with their own buttons look locked, too, while the briefing talks
+  $('panel').style.opacity = (g.view === 'lab' || g.view === 'factory') && !bites.open ? 0.45 : 1;
+  renderActions();
+}
+// the lab panel's buttons depend on the briefing too (×1000 opens once LOCK IN is done)
+bites.onChange = () => { update(); if (g.view === 'lab' && g.lab) renderLab(); };
+
+function status(msg, cls = 'info') { $('status').textContent = msg; $('status').className = 'status ' + cls; }
+
+// ── Level 4: recipe card and test ──────────────────────────────────────────
+function renderRecipe(res) {
+  const rec = LEVELS[3].record || [], has = (i, s) => rec[i] && P.toString(rec[i].op) === s;
+  const hPlaced = g.b && T.byLabel(g.b, 'h');
+  const steps = [
+    [!!hPlaced || rec.length > 0, 'NEW h in |+⟩ on a free tile', '0 steps'],
+    [has(0, 'ZZI'), 'GLUE <span class="z">Z</span>(c)·<span class="z">Z</span>(h)', '1 step'],
+    [has(1, 'IXX'), 'GLUE <span class="x">X</span>(h)·<span class="x">X</span>(t)', '1 step'],
+    [!!res, 'READ h in Z', '0 steps'],
+  ];
+  let html = '<h3>// RECIPE CARD: CNOT //</h3><ol>' + steps.map(([d, s, c]) => `<li class="${d ? 'done' : ''}">${s} <span style="color:var(--faint)">(${c})</span></li>`).join('') + '</ol>' +
+    '<div style="color:var(--dim)">The fix-ups after random results are done by software (X on t, Z on c).</div>';
+  if (rec.length) html += `<div class="row">You asked: ${rec.map(r => opName(r.op)).join(', then ')}</div>`;
+  if (res) {
+    const v = x => (x === null ? '?' : x);
+    html += '<h3 style="margin-top:8px">// TEST: 4 RUNS EACH //</h3><table><tr><th>c</th><th>t</th><th>t afterwards</th><th>want</th><th></th></tr>' +
+      res.rows.filter(r => !r.pair).map(r => `<tr><td>${r.c}</td><td>${r.t}</td><td>${r.outs.map(v).join(' ')}</td><td>${r.c ^ r.t}</td><td class="${r.ok ? 'ok' : 'no'}">${r.ok ? '✓' : '✗'}</td></tr>`).join('') + '</table>';
+    const pr = res.rows.find(r => r.pair);
+    html += `<div class="row">In between: c = |+⟩, t = 0 → an entangled pair? equal in Z <span class="${pr.sameZ ? 'ok' : 'no'}">${pr.sameZ ? '✓' : '✗'}</span>, equal in X <span class="${pr.sameX ? 'ok' : 'no'}">${pr.sameX ? '✓' : '✗'}</span></div>`;
+    if (!res.ok && res.rows.slice(0, 4).every(r => r.ok)) html += '<div class="no">Right on 0s and 1s, but the in-between input lost its X: along the way, this plan found out c. A real CNOT never looks.</div>';
+    else if (!res.ok) html += '<div class="no">The recipe did not run: the questions you asked are not the ones on the card.</div>';
+  }
+  $('panel').innerHTML = html;
+}
+
+// ── Level 5: job list ──────────────────────────────────────────────────────
+function renderJobs() {
+  const lv = LEVELS[4], jobs = G.JOBS[lv.rn] || [];
+  let html = `<h3>// ${{ compact: 'ROUND A: COMPACT ROW', wide: 'ROUND B: WIDE ROW', free: 'ROUND C: YOUR DESIGN' }[lv.rn]} //</h3>`;
+  html += '<ol>' + jobs.map(j => `<li class="${lv.k && lv.k.has(j) ? 'done' : ''}">${opName(job(j))}</li>`).join('') + '</ol>';
+  if (lv.rn === 'free') html += `<div style="color:var(--dim)">Our best plan: ${G.PAR.free.tiles} tiles × ${G.PAR.free.steps} steps = ${G.PAR.free.tiles * G.PAR.free.steps}. Questions on different patches may share a step.</div>`;
+  if (lv.rn === 'compact' || lv.rn === 'wide') html += '<div style="color:var(--dim)">Grey tiles: the lane, kept free for hallways. Patches can\'t stand there.</div>';
+  $('panel').innerHTML = html;
+}
+
+// Remember the finished free-round plan for level 6.
+function snapshot() {
+  const b = g.b;
+  return { tiles: T.tiles(b), steps: b.steps, w: b.w, h: b.h, used: [...b.used],
+    patches: b.patches.map(p => ({ label: p.label, c: p.c, r: p.r, wide: p.wide, tb: p.tb, mixed: p.mixed })) };
+}
+
+// ── Drawing the board ──────────────────────────────────────────────────────
+function drawBoard(t) {
+  const b = g.b;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const flash = g.lastFlash && t - g.lastFlash.t0 < 900 ? 1 - (t - g.lastFlash.t0) / 900 : 0;
+  const mark = g.mark && t < g.mark.until ? g.mark : null;
+  // tiles
+  for (let r = 0; r < b.h; r++) {
+    for (let c = 0; c < b.w; c++) {
+      const [x, y] = cellXY(c, r), k = T.key(c, r);
+      ctx.save();
+      if (b.lane.has(k)) {
+        ctx.fillStyle = 'rgba(140,150,170,0.10)'; ctx.fillRect(x, y, S_, S_);
+        ctx.strokeStyle = 'rgba(140,150,170,0.18)'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = -S_; i < S_; i += 12) { ctx.moveTo(x + Math.max(0, i), y + Math.max(0, -i)); ctx.lineTo(x + Math.min(S_, S_ + i), y + Math.min(S_, S_ - i)); }
+        ctx.stroke();
+      }
+      if (b.used.has(k)) { ctx.fillStyle = 'rgba(0,238,255,0.06)'; ctx.fillRect(x + 2, y + 2, S_ - 4, S_ - 4); }
+      ctx.strokeStyle = b.used.has(k) ? 'rgba(0,238,255,0.32)' : '#16263a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 2, y + 2, S_ - 4, S_ - 4);
+      if (g.plan.hall.has(k) || (flash && g.lastFlash.cells.includes(k))) {
+        const a = g.plan.hall.has(k) ? 0.26 : 0.4 * flash;
+        ctx.fillStyle = `rgba(180,140,255,${a})`;
+        ctx.fillRect(x + 4, y + 4, S_ - 8, S_ - 8);
+        ctx.strokeStyle = HALL; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
+        ctx.strokeRect(x + 4, y + 4, S_ - 8, S_ - 8);
+        ctx.setLineDash([]);
+        text(ctx, '~', x + S_ / 2, y + S_ / 2, { font: 'bold 22px Courier New', color: HALL });
+      }
+      if (g.cellSel === k) { ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.strokeRect(x + 6, y + 6, S_ - 12, S_ - 12); }
+      if (mark && mark.cells.includes(k)) { ctx.strokeStyle = '#ff4455'; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.strokeRect(x + 3, y + 3, S_ - 6, S_ - 6); }
+      ctx.restore();
+    }
+  }
+  // readouts of patches that were read
+  for (const ro of g.readouts) {
+    ctx.save(); ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = '#7fa8c0'; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(ro.x, ro.y, S_ * 0.22, 0, 2 * Math.PI); ctx.stroke();
+    ctx.restore();
+    text(ctx, ro.text, ro.x, ro.y + 1, { font: 'bold 22px Courier New', color: '#fff' });
+    text(ctx, ro.label + ' read', ro.x, ro.y + S_ * 0.33, { font: '11px Courier New', color: '#7fa8c0' });
+  }
+  // glue bridges (planned)
+  for (const gk of g.plan.glues) {
+    const segs = T.borderSegs(b, gk);
+    if (!segs[0] || !segs[1]) continue;
+    const [a, z] = segs.map(s => segLine(T.owner(b, s.c, s.r), s));
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,238,0,0.35)'; glow(ctx, '#ffee00', 14);
+    const xs = [a[0], a[2], z[0], z[2]], ys = [a[1], a[3], z[1], z[3]];
+    ctx.fillRect(Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs) || 4, Math.max(...ys) - Math.min(...ys) || 4);
+    ctx.restore();
+  }
+  // patches
+  for (const p of b.patches) drawPatch(p, t, flash, mark);
+  // dragged patch preview
+  if (g.drag && g.drag.moved && g.drag.h && g.drag.h.patch && g.drag.paint === null && g.drag.at && g.tools.move) {
+    const [c, r] = dragTarget(g.drag, g.drag.at);
+    const R = patchRect({ ...g.drag.h.patch, c, r });
+    ctx.save(); ctx.strokeStyle = '#fff'; ctx.globalAlpha = 0.6; ctx.setLineDash([6, 5]); ctx.lineWidth = 2;
+    ctx.strokeRect(R.x, R.y, R.w, R.h); ctx.restore();
+  }
+  // floating results
+  g.bubbles = g.bubbles.filter(bu => t - bu.t0 < 3200);
+  for (const bu of g.bubbles) {
+    const k = (t - bu.t0) / 3200;
+    ctx.save(); ctx.globalAlpha = Math.min(1, 2.5 * (1 - k));
+    ctx.font = 'bold 15px Courier New';
+    const w = ctx.measureText(bu.text).width + 14, y = bu.y - 18 * k;
+    ctx.fillStyle = 'rgba(5,5,16,0.85)'; ctx.fillRect(bu.x - w / 2, y - 12, w, 24);
+    ctx.strokeStyle = bu.col; ctx.strokeRect(bu.x - w / 2, y - 12, w, 24);
+    text(ctx, bu.text, bu.x, y + 1, { font: 'bold 15px Courier New', color: bu.col });
+    ctx.restore();
+  }
+  drawLock();
+}
+
+function drawPatch(p, t, flash, mark) {
+  const R = patchRect(p);
+  const magic = p.kind === 'magic';
+  ctx.save();
+  ctx.fillStyle = magic ? 'rgba(255,238,0,0.10)' : '#0a1426';
+  ctx.fillRect(R.x, R.y, R.w, R.h);
+  if (g.sel === p.id) { ctx.strokeStyle = '#fff'; ctx.setLineDash([5, 4]); ctx.lineWidth = 2; ctx.strokeRect(R.x - 6, R.y - 6, R.w + 12, R.h + 12); }
+  ctx.restore();
+  for (const s of T.segsOf(p)) {
+    const [x1, y1, x2, y2] = segLine(p, s), k = T.segKey(s);
+    const joined = g.plan.joins.has(k) || [...g.plan.glues].some(gk => T.borderSegs(g.b, gk).some(x => x && T.segKey(x) === k));
+    const lit = flash && g.lastFlash.segs.includes(k);
+    const bad = mark && mark.segs.includes(k);
+    ctx.save();
+    ctx.strokeStyle = bad ? '#ff4455' : COL[s.type];
+    ctx.lineWidth = joined ? 8 : 5;
+    ctx.lineCap = 'butt';
+    if (s.type === 'X') ctx.setLineDash([9, 6]);
+    if (joined || lit || bad) glow(ctx, bad ? '#ff4455' : COL[s.type], joined ? 16 : 22 * flash);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    // a joined edge reaches out into its hallway tile
+    if (g.plan.joins.has(k)) {
+      const [dc, dr] = T.STEP[s.side], mx = (x1 + x2) / 2, my = (y1 + y2) / 2, L = S_ * INSET + 6;
+      ctx.setLineDash([]); ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx + dc * L, my + dr * L); ctx.stroke();
+    }
+    ctx.restore();
+    // edge letter, inside the patch
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, [dc, dr] = T.STEP[s.side];
+    text(ctx, s.type, mx - dc * 12, my - dr * 12, { font: 'bold 11px Courier New', color: COL[s.type] });
+  }
+  const cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+  text(ctx, magic ? '★' : p.label, cx, cy - (magic ? 0 : 2), { font: `bold ${magic ? 26 : 18}px Courier New`, color: magic ? '#ffee00' : '#dde6ee' });
+  if (g.unknown && g.unknown.has(p.label)) text(ctx, '?', R.x + R.w - 14, R.y + 16, { font: 'bold 18px Courier New', color: '#ffee00' });
+  if (p.fresh && g.tools.place) text(ctx, 'fresh', cx, cy + 18, { font: '10px Courier New', color: '#7fa8c0' });
+}
+
+function drawLock() {
+  if (bites.open || g.view === 'lab' || g.view === 'factory' || (g.view === 'zoom' && g.zoom.phase === 'done')) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,5,16,0.55)';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.restore();
+  text(ctx, '🔒 READ THE BRIEFING → NEXT', cv.width / 2, 17, { font: 'bold 13px Courier New', color: '#c8d4e0' });
+}
+
+// ── Level 1: from patch to tile ────────────────────────────────────────────
+const Z1 = { d: 3, code: QEC.codes.rotatedSurfaceCode(3) };
+function zoomStart() {
+  g.view = 'zoom';
+  g.b = null;
+  cv.width = 560; cv.height = 560;
+  g.zoom = { zRow: 1, xCol: 1, phase: 'z', t0: null, k: 0, drag: null, zDone: false, xDone: false };
+  $('panel').innerHTML = '';
+  update();
+}
+const ZG = () => QEC.ui.surface.geometry(3, 560, 150);
+function zoomActions(el) {
+  const z = g.zoom;
+  if (z.phase === 'z') { el.appendChild(btn('▲', () => slide('z', -1))); el.appendChild(btn('▼', () => slide('z', 1))); }
+  if (z.phase === 'x') { el.appendChild(btn('◀', () => slide('x', -1))); el.appendChild(btn('▶', () => slide('x', 1))); }
+  if (z.phase === 'ready') el.appendChild(btn('🔍 ZOOM OUT', () => { z.phase = 'zoom'; z.t0 = performance.now(); update(); }, 'go'));
+}
+function slide(which, delta) {
+  const z = g.zoom;
+  if (which === 'z') z.zRow = Math.max(0, Math.min(2, z.zRow + delta));
+  else z.xCol = Math.max(0, Math.min(2, z.xCol + delta));
+  checkEdges();
+}
+function checkEdges() {
+  const z = g.zoom;
+  if (z.phase === 'z' && z.zRow !== 1) { z.zDone = true; z.phase = 'x'; status(`The Z chain lies along the ${z.zRow === 0 ? 'top' : 'bottom'} edge: that edge lights up.`, 'success'); bites.notify('slide-z'); }
+  else if (z.phase === 'x' && z.xCol !== 1) { z.xDone = true; z.phase = 'ready'; status(`The X chain lies along the ${z.xCol === 0 ? 'left' : 'right'} edge.`, 'success'); bites.notify('slide-x'); }
+  update();
+}
+function zoomDown(e) {
+  if (locked()) return;
+  const z = g.zoom;
+  if (z.phase !== 'z' && z.phase !== 'x') return;
+  z.drag = { start: pointer(cv, e) };
+  cv.setPointerCapture(e.pointerId);
+}
+function zoomMove(e) {
+  const z = g.zoom;
+  if (!z.drag) return;
+  const pt = pointer(cv, e), G3 = ZG();
+  if (z.phase === 'z') { const r = Math.round((pt.y - G3.py(0)) / G3.sp); if (r >= 0 && r <= 2 && r !== z.zRow) { z.zRow = r; } }
+  if (z.phase === 'x') { const c = Math.round((pt.x - G3.px(0)) / G3.sp); if (c >= 0 && c <= 2 && c !== z.xCol) { z.xCol = c; } }
+}
+function zoomUp() {
+  const z = g.zoom;
+  if (!z.drag) return;
+  z.drag = null;
+  checkEdges();
+}
+
+function drawZoom(t) {
+  const z = g.zoom, G3 = ZG(), code = Z1.code;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  let k = 0;
+  if (z.phase === 'zoom' || z.phase === 'done') {
+    k = Math.min(1, (t - z.t0) / 2600);
+    if (k >= 1 && z.phase === 'zoom') { z.phase = 'done'; bites.notify('zoom'); update(); }
+  }
+  const fade = Math.max(0, 1 - k / 0.4);              // checks fade first
+  const shrink = Math.max(0, (k - 0.35) / 0.65);       // then the patch becomes a tile
+  const ease = shrink * shrink * (3 - 2 * shrink);
+  // the patch outline and where it ends: a tile in a 3 × 2 board
+  const out = { x: G3.px(0) - G3.sp / 2, y: G3.py(0) - G3.sp / 2, s: 3 * G3.sp };
+  const TS = 140, bx = (560 - 3 * TS) / 2, by = (560 - 2 * TS) / 2, m = TS * INSET;
+  const tile = { x: bx + TS + m, y: by + m, s: TS - 2 * m };
+  const R = { x: out.x + (tile.x - out.x) * ease, y: out.y + (tile.y - out.y) * ease, s: out.s + (tile.s - out.s) * ease };
+  // board grid fades in at the end
+  if (ease > 0) {
+    ctx.save(); ctx.globalAlpha = ease; ctx.strokeStyle = '#16263a';
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) ctx.strokeRect(bx + c * TS + 2, by + r * TS + 2, TS - 4, TS - 4);
+    ctx.restore();
+  }
+  if (fade > 0) {
+    ctx.save(); ctx.globalAlpha = fade;
+    QEC.ui.surface.drawTiles(ctx, code, G3, code.stabs.map(() => 0), t);
+    ctx.restore();
+  }
+  // qubits and chains shrink with the patch
+  const sc = R.s / out.s, X = x => R.x + (x - out.x) * sc, Y = y => R.y + (y - out.y) * sc;
+  const qa = Math.max(0, 1 - shrink * 1.6);
+  for (let q = 0; q < 9; q++) {
+    const { r, c } = code.data[q], x = X(G3.px(c)), y = Y(G3.py(r));
+    const inZ = r === z.zRow, inX = c === z.xCol && z.phase !== 'z';
+    ctx.save(); ctx.globalAlpha = qa;
+    ctx.fillStyle = '#071022'; ctx.strokeStyle = '#7fa8c0'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 22 * sc, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    if (qa > 0 && (inZ || inX)) {
+      const lt = inZ && inX ? 'Y' : inZ ? 'Z' : 'X';
+      ctx.save(); ctx.globalAlpha = qa;
+      text(ctx, lt, x, y + 1, { font: `bold ${Math.max(8, 18 * sc)}px Courier New`, color: COL[lt] });
+      ctx.restore();
+    }
+  }
+  // chains: yellow while you drag them
+  if (qa > 0) {
+    ctx.save(); ctx.globalAlpha = qa; ctx.strokeStyle = '#ffee00'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
+    glow(ctx, '#ffee00', 8);
+    const zy = Y(G3.py(z.zRow));
+    ctx.beginPath(); ctx.moveTo(X(G3.px(0)) - 30 * sc, zy); ctx.lineTo(X(G3.px(2)) + 30 * sc, zy); ctx.stroke();
+    if (z.phase !== 'z') { const xx = X(G3.px(z.xCol)); ctx.beginPath(); ctx.moveTo(xx, Y(G3.py(0)) - 30 * sc); ctx.lineTo(xx, Y(G3.py(2)) + 30 * sc); ctx.stroke(); }
+    ctx.restore();
+  }
+  // edges: lit once a chain has reached them
+  const showZ = z.zDone, showX = z.xDone;
+  const edge = (x1, y1, x2, y2, type, on) => {
+    ctx.save();
+    ctx.strokeStyle = on ? COL[type] : '#2a3a4c'; ctx.lineWidth = on ? 6 : 2;
+    if (type === 'X') ctx.setLineDash([12, 8]);
+    if (on) glow(ctx, COL[type], 12);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.restore();
+    if (on) text(ctx, type, (x1 + x2) / 2 + (x1 === x2 ? (x1 < R.x + R.s / 2 ? 14 : -14) : 0), (y1 + y2) / 2 + (y1 === y2 ? (y1 < R.y + R.s / 2 ? 14 : -14) : 0), { font: 'bold 13px Courier New', color: COL[type] });
+  };
+  if (ease > 0) { ctx.save(); ctx.globalAlpha = ease; ctx.fillStyle = '#0a1426'; ctx.fillRect(R.x, R.y, R.s, R.s); ctx.restore(); }
+  edge(R.x, R.y, R.x + R.s, R.y, 'Z', showZ);
+  edge(R.x, R.y + R.s, R.x + R.s, R.y + R.s, 'Z', showZ);
+  edge(R.x, R.y, R.x, R.y + R.s, 'X', showX);
+  edge(R.x + R.s, R.y, R.x + R.s, R.y + R.s, 'X', showX);
+  if (ease > 0.9) text(ctx, 'q1', R.x + R.s / 2, R.y + R.s / 2, { font: 'bold 18px Courier New', color: '#dde6ee' });
+  drawLock();
+}
+
+// ── Level 6: the lab and the d dial ────────────────────────────────────────
+const LAB_P = 0.01, LAB_SHOTS = { 3: 100000, 5: 200000, 7: 400000 }, DS = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25];
+const BUDGET = 0.01;
+function labStart() {
+  const lab = g.lab = { rates: null, running: false, prog: {}, d: 3, len: 1, runs: null, locked: false };
+  const saved = QEC.progress.load(CH, 'plan');
+  lab.plan = saved && saved.tiles ? saved : samplePlan();
+  lab.sample = !(saved && saved.tiles);
+  // draw the frozen plan
+  g.b = T.create({ w: lab.plan.w, h: lab.plan.h, nq: 4 });
+  lab.plan.patches.forEach((p, q) => T.place(g.b, { ...p, q, fresh: false }));
+  g.b.used = new Set(lab.plan.used);
+  g.b.steps = lab.plan.steps;
+  g.view = 'lab';
+  g.tools = {};
+  clearPlan();
+  layoutBoard();
+  renderLab();
+  update();
+}
+function samplePlan() {
+  const b = G.board('free');
+  G.FREE_LABELS.forEach((label, q) => T.place(b, { label, q, c: q, r: 0, fresh: false }));
+  for (let c = 0; c < 4; c++) b.used.add(T.key(c, 1));
+  return { tiles: 8, steps: 2, w: b.w, h: b.h, used: [...b.used], patches: b.patches.map(p => ({ label: p.label, c: p.c, r: p.r, wide: p.wide, tb: p.tb, mixed: p.mixed })) };
+}
+const labN = () => g.lab.plan.tiles * g.lab.plan.steps * g.lab.len;
+const pct = v => (v >= 0.995 ? '≈100%' : v >= 0.01 ? (100 * v).toFixed(1) + '%' : v >= 1e-4 ? (100 * v).toFixed(2) + '%' : v > 0 ? (100 * v).toPrecision(2) + '%' : '0%');
+function labRun() {
+  const lab = g.lab;
+  if (lab.running) return;
+  lab.running = true;
+  const fails = { 3: 0, 5: 0, 7: 0 }, done = { 3: 0, 5: 0, 7: 0 }, codes = { 3: QEC.codes.rotatedSurfaceCode(3), 5: QEC.codes.rotatedSurfaceCode(5), 7: QEC.codes.rotatedSurfaceCode(7) };
+  const r = QEC.makeRng(QEC.randomSeed());
+  (function next() {
+    if (g.lab !== lab) return;   // the player left or restarted the level: drop this run
+    const t0 = performance.now();
+    while (performance.now() - t0 < 40) {
+      const d = [3, 5, 7].find(x => done[x] < LAB_SHOTS[x]);
+      if (!d) break;
+      const n = Math.min(4000, LAB_SHOTS[d] - done[d]);
+      fails[d] += QEC.sim.logicalErrorRate(codes[d], LAB_P, n, r).fails;
+      done[d] += n;
+    }
+    lab.prog = { done: { ...done }, fails: { ...fails } };
+    if ([3, 5, 7].some(x => done[x] < LAB_SHOTS[x])) { renderLab(); setTimeout(next, 0); return; }
+    lab.running = false;
+    lab.rates = { 3: fails[3] / done[3], 5: fails[5] / done[5], 7: fails[7] / done[7] };
+    lab.ext = B.extend(lab.rates);
+    status(`Lab done: ${(done[3] + done[5] + done[7]).toLocaleString('en')} shots.`, 'success');
+    renderLab();
+    bites.notify('lab');
+  })();
+  renderLab();
+}
+function labLock() {
+  const lab = g.lab;
+  if (!lab.rates) return;
+  if (lab.len !== 1) { status('Switch back to ×1 (your plan as it is), then LOCK IN.', 'warn'); return; }
+  const best = B.smallestSafe(lab.ext.rate, labN(), BUDGET, DS);
+  if (best === null) {
+    status(`No d up to ${DS[DS.length - 1]} keeps this plan under 1 in 100 with this lab run: each +2 in d barely helps. Press ▶ RUN THE LAB again.`, 'error');
+    QEC.ui.fx.bad(cv);
+    return;
+  }
+  const ok = lab.d === best;
+  firstTry('pick-d-first', ok);
+  const q = d => B.physicalQubits(lab.plan.tiles, d);
+  if (ok) {
+    status(`✓ d = ${best} is the smallest safe size: ${q(best).toLocaleString('en')} physical qubits.`, 'success');
+    QEC.ui.fx.good(cv);
+    lab.locked = true;
+    bites.notify('pick-d');
+    renderLab();
+  } else if (lab.d < best) {
+    status(`d = ${lab.d} fails ${pct(runFailAt(lab.d))} of runs: more than 1 in 100. Try RUN 1000 TIMES.`, 'error');
+    QEC.ui.fx.bad(cv);
+  } else {
+    status(`Safe, but bigger than needed: d = ${lab.d} costs ${q(lab.d).toLocaleString('en')} qubits; a smaller d is safe too.`, 'warn');
+    QEC.ui.fx.nudge(cv);
+  }
+}
+const runFailAt = d => B.runFail(B.tileStep(g.lab.ext.rate(d)), labN());
+function scaleText() {
+  const lab = g.lab;
+  if (!lab || !lab.ext) return '';
+  const n = lab.plan.tiles * lab.plan.steps;
+  const a = B.smallestSafe(lab.ext.rate, n, BUDGET, DS), z = B.smallestSafe(lab.ext.rate, n * 1000, BUDGET, DS);
+  return `Your data: d = ${a} for your plan, d = ${z} for one 1000× longer.`;
+}
+function renderLab() {
+  const lab = g.lab;
+  // a run where no d is safe (a very unlucky lab) may be run again
+  const noSafe = lab.rates && B.smallestSafe(lab.ext.rate, lab.plan.tiles * lab.plan.steps, BUDGET, DS) === null;
+  let html = `<h3>// YOUR PLAN //</h3><div>${lab.plan.tiles} tiles × ${lab.plan.steps} steps = <b>${lab.plan.tiles * lab.plan.steps} tile-steps</b>${lab.sample ? ' <span style="color:var(--dim)">(a sample plan: your Round C plan is not saved in this browser)</span>' : ''}</div>`;
+  html += `<h3 style="margin-top:8px">// THE LAB: X FLIPS ON ONE PATCH, p = 1% //</h3><table><tr><th>d</th><th>shots</th><th>fooled</th><th>rate</th></tr>`;
+  for (const d of [3, 5, 7]) {
+    const done = (lab.prog.done || {})[d] || 0, f = (lab.prog.fails || {})[d] || 0;
+    html += `<tr><td>${d}</td><td><span class="bar"><i style="width:${100 * done / LAB_SHOTS[d]}%"></i></span></td><td>${f}</td><td>${done ? pct(f / done) : '–'}</td></tr>`;
+  }
+  html += '</table>';
+  html += `<div class="row"><button class="btn go" id="btn-lab" ${lab.running || (lab.rates && !noSafe) ? 'disabled' : ''}>▶ RUN THE LAB</button>${lab.rates ? `<span>each +2 in d divides the rate by about <b>${lab.ext.factor.toFixed(1)}</b></span>` : ''}</div>`;
+  if (lab.rates) {
+    const d = lab.d, qL = lab.ext.rate(d), f = runFailAt(d);
+    html += `<h3 style="margin-top:10px">// PICK d //</h3><div class="dial">` +
+      DS.map(x => `<button class="btn ${x === d ? 'active' : ''} ${lab.ext.measured(x) ? '' : 'trend'}" data-d="${x}">${x}</button>`).join('') + '</div>' +
+      `<div style="color:var(--dim)">Solid: measured. Dashed: your trend, extended. A tile can also fail through Z flips, which behave the same, so one tile-step fails about twice as often as the lab rate.</div>` +
+      `<div class="row">PLAN LENGTH <button class="btn ${lab.len === 1 ? 'active' : ''}" id="len1">×1</button><button class="btn ${lab.len === 1000 ? 'active' : ''}" id="len1000" ${bites.done || lab.locked ? '' : 'disabled'}>×1000</button></div>` +
+      `<table style="margin-top:6px"><tr><td>one tile, one step fails</td><td>${pct(B.tileStep(qL))}</td></tr>` +
+      `<tr><td>whole plan fails (${labN().toLocaleString('en')} tile-steps)</td><td class="big ${f <= BUDGET ? 'ok' : 'no'}">${pct(f)}</td></tr>` +
+      `<tr><td>physical qubits (2d² per tile)</td><td>${B.physicalQubits(lab.plan.tiles, d).toLocaleString('en')}</td></tr></table>` +
+      `<div class="row"><button class="btn" id="btn-1000">🎲 RUN 1000 TIMES</button><button class="btn next" id="btn-lockd" ${lab.locked ? 'disabled' : ''}>LOCK IN d = ${d}</button><span id="runs">${lab.runs !== null ? `failed <b>${lab.runs}</b> of 1000 runs` : ''}</span></div>` +
+      '<div style="color:var(--dim)">RUN 1000 TIMES draws each run\'s fate from the chance above.</div>';
+  }
+  $('panel').innerHTML = html;
+  const on = (id, f) => { const el = $(id); if (el) el.onclick = () => { if (!locked()) f(); }; };
+  on('btn-lab', labRun);
+  on('btn-1000', () => { let n = 0; const f = runFailAt(lab.d); for (let i = 0; i < 1000; i++) if (rng() < f) n++; lab.runs = n; renderLab(); });
+  on('btn-lockd', labLock);
+  on('len1', () => { lab.len = 1; lab.runs = null; renderLab(); });
+  on('len1000', () => { lab.len = 1000; lab.runs = null; renderLab(); });
+  document.querySelectorAll('.dial button').forEach(b => (b.onclick = () => { if (locked()) return; lab.d = Number(b.dataset.d); lab.runs = null; renderLab(); }));
+}
+
+// ── Level 7: factories ─────────────────────────────────────────────────────
+const T_COUNT = 6, DATA_TILES = 6, FACTORY_TILES = 11, GOAL_STEPS = 40;
+function factoryView() {
+  g.view = 'factory';
+  cv.width = 600; cv.height = 300;
+  renderFactory();
+  update();
+}
+function renderFactory() {
+  const lv = LEVELS[6], f = lv.factories, run = lv.ran;
+  const tiles = DATA_TILES + FACTORY_TILES * f;
+  let html = `<h3>// MAGIC STATE FACTORIES //</h3><div>Program: ${T_COUNT} T gates, each uses one magic state (1 step). Data block: ${DATA_TILES} tiles. Each factory: ${FACTORY_TILES} tiles, one magic state every 11 steps.</div>`;
+  html += `<div class="row">FACTORIES <button class="btn" id="f-minus">−</button><b class="big">${f}</b><button class="btn" id="f-plus">+ FACTORY</button><button class="btn go" id="f-run">▶ RUN</button></div>`;
+  html += `<table style="margin-top:6px"><tr><td>tiles</td><td>${DATA_TILES} + ${FACTORY_TILES} × ${f} = <b>${tiles}</b></td></tr>`;
+  if (run) html += `<tr><td>steps</td><td class="big ${run.steps < GOAL_STEPS ? 'ok' : 'no'}">${run.steps}</td></tr><tr><td>tiles × steps</td><td>${run.tiles * run.steps}</td></tr>`;
+  html += '</table>';
+  $('panel').innerHTML = html;
+  const on = (id, fn) => { $(id).onclick = () => { if (!locked()) fn(); }; };
+  on('f-minus', () => { lv.factories = Math.max(1, lv.factories - 1); lv.ran = null; renderFactory(); });
+  on('f-plus', () => { lv.factories = Math.min(8, lv.factories + 1); lv.ran = null; renderFactory(); });
+  on('f-run', () => {
+    const res = B.factoryRun(T_COUNT, lv.factories);
+    lv.ran = { ...res, f: lv.factories, tiles: DATA_TILES + FACTORY_TILES * lv.factories, t0: performance.now() };
+    status(`${lv.factories} factor${lv.factories === 1 ? 'y' : 'ies'}: ${res.steps} steps.`, res.steps < GOAL_STEPS ? 'success' : 'info');
+    bites.notify('run1');
+    if (res.steps < GOAL_STEPS) { QEC.ui.fx.good(cv); bites.notify('fast'); }
+    renderFactory();
+  });
+}
+function drawFactory(t) {
+  const lv = LEVELS[6], run = lv.ran, f = run ? run.f : lv.factories;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const L = 110, Rr = 580, top = 30, rowH = Math.min(26, 170 / f), maxT = 70;
+  const sx = s => L + (Rr - L) * s / maxT;
+  const shown = run ? Math.min(maxT, (t - run.t0) / 40) : 0;
+  text(ctx, 'steps →', Rr - 30, 14, { font: '11px Courier New', color: '#7fa8c0' });
+  for (let s = 0; s <= maxT; s += 10) {
+    ctx.strokeStyle = '#16263a'; ctx.beginPath(); ctx.moveTo(sx(s), top); ctx.lineTo(sx(s), 280); ctx.stroke();
+    text(ctx, String(s), sx(s), 290, { font: '10px Courier New', color: '#6b7f94' });
+  }
+  ctx.save(); ctx.strokeStyle = '#ffaa00'; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(sx(GOAL_STEPS), top); ctx.lineTo(sx(GOAL_STEPS), 280); ctx.stroke(); ctx.restore();
+  text(ctx, 'goal', sx(GOAL_STEPS) + 16, top + 4, { font: '10px Courier New', color: '#ffaa00' });
+  for (let i = 0; i < f; i++) {
+    const y = top + 10 + i * rowH;
+    text(ctx, `factory ${i + 1}`, L - 8, y + rowH / 2, { font: '11px Courier New', color: '#93a7bb', align: 'right' });
+    const end = run ? Math.min(maxT, run.steps) : 0;   // factories stop when the program is done
+    for (let s = 0; s + 11 <= end + 10 && s + 11 <= maxT; s += 11) {
+      const w = Math.min(11, Math.max(0, Math.min(shown, end) - s));
+      if (w <= 0) break;
+      ctx.fillStyle = 'rgba(255,238,0,0.18)';
+      ctx.fillRect(sx(s) + 1, y + 2, (sx(s + w) - sx(s)) - 2, rowH - 4);
+      if (shown >= s + 11) text(ctx, '★', sx(s + 11) - 6, y + rowH / 2, { font: '12px Courier New', color: '#ffee00' });
+    }
+  }
+  const yD = 250;
+  text(ctx, 'program', L - 8, yD, { font: '11px Courier New', color: '#93a7bb', align: 'right' });
+  if (run) {
+    run.used.forEach((s, k) => {
+      if (s > shown) return;
+      ctx.fillStyle = '#00ff88';
+      ctx.fillRect(sx(s - 1), yD - 9, sx(s) - sx(s - 1), 18);
+      text(ctx, 'T' + (k + 1), sx(s) - 4, yD - 18 - (k % 2) * 12, { font: '10px Courier New', color: '#00ff88' });
+    });
+    if (shown >= run.steps) text(ctx, `done: ${run.steps} steps`, sx(Math.min(run.steps, maxT - 8)) + 40, yD + 20, { font: 'bold 12px Courier New', color: '#dde6ee' });
+  }
+  drawLock();
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────
+QEC.ui.loop(t => {
+  try {
+    if (g.view === 'zoom') drawZoom(t);
+    else if (g.view === 'board' || g.view === 'lab') drawBoard(t);
+    else if (g.view === 'factory') drawFactory(t);
+  } catch (e) {   // one bad frame must not freeze the board
+    if (!g.drawErr) { g.drawErr = true; console.error(e); }
+  }
+});
+
+// ── Levels and chapter ─────────────────────────────────────────────────────
+function startLevel(i) {
+  g = { ...G0, plan: { hall: new Set(), joins: new Set(), glues: new Set() }, bubbles: [], readouts: [] };
+  g.idx = i;
+  g.lv = LEVELS[i];
+  g.view = g.lv.view || 'board';
+  $('panel').innerHTML = '';
+  status('', 'info');
+  g.lv.start();
+  bites.play(g.lv.bites, () => levelDone(i));
+  update();
+}
+
+function levelDone(i) {
+  chapter.complete(i);
+  g.canNextRound = false;
+  const coreEnd = i === CORE - 1, bonusEnd = i === LEVELS.length - 1;
+  bites.finish(coreEnd
+    ? '✓ <b>Chapter complete.</b> You computed with protected qubits by asking parity questions, counted the cost in tiles and steps, and chose a code size from your own threshold data. That is how a surface-code quantum computer is designed. A bonus level shows the one ingredient still missing.'
+    : bonusEnd
+      ? '✓ <b>Bonus done.</b> Parity questions protect and connect; magic states, made in factories, add the power. That is the whole machine, in outline.'
+      : '✓ <b>Level complete.</b>',
+  coreEnd
+    ? [{ label: 'BONUS: MAGIC →', onClick: () => chapter.go(i + 1) }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
+    : bonusEnd
+      ? [{ label: 'BACK TO MAP', onClick: () => (location.href = 'index.html') }]
+      : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(i + 1) }]);
+  update();
+}
+
+const CORE = 6;
+const chapter = QEC.ui.chapter({ id: CH, el: $('levels'), levels: LEVELS.map(l => l.name), start: startLevel, core: CORE });
+chapter.begin();
+</script>
+</body>
+</html>

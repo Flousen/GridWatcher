@@ -1,6 +1,6 @@
 # Grid Watcher
 
-A browser game that teaches quantum error correction in six short chapters. Static HTML/JS: no build, no npm, no frameworks. See README.md for the learning path.
+A browser game that teaches quantum error correction in seven short chapters. Static HTML/JS: no build, no npm, no frameworks. See README.md for the learning path.
 
 ## Run and check
 
@@ -18,7 +18,7 @@ A browser game that teaches quantum error correction in six short chapters. Stat
 
 ## Progress storage: keep it compatible
 
-- Key `gridwatcher.progress.v1`. Chapter ids are storage keys, not file numbers: `ch1`, `ch2`, `ch3`, `chains` (= ch4-square), `ch4` (= ch5-surface), `ch5` (= ch6-threshold). Never rename them.
+- Key `gridwatcher.progress.v1`. Chapter ids are storage keys, not file numbers: `ch1`, `ch2`, `ch3`, `chains` (= ch4-square), `ch4` (= ch5-surface), `ch5` (= ch6-threshold), `surgery` (= ch7-surgery). Never rename them. Chapter 7 also keeps its last free-round plan under `data.plan` (via `QEC.progress.save/load`) for its level 6.
 - Saved progress from older versions must still resume correctly. Example: old ch1 saves have `{done:true}` and no `level`. When you change level counts or the chapter helper, think through what an existing save does.
 - Storage may be missing (private mode), so every access stays wrapped.
 
