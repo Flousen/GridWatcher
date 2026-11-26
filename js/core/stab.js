@@ -28,17 +28,13 @@
     for (let j = 0; j < a.x.length; j++) e += g(a.x[j], a.z[j], b.x[j], b.z[j]);
     e = ((e % 4) + 4) % 4;
     if (e !== 0 && e !== 2) throw new Error('stab: product of anticommuting Paulis');
-    return { x: a.x.map((v, j) => v ^ b.x[j]), z: a.z.map((v, j) => v ^ b.z[j]), s: e / 2 };
+    return { ...P.compose(a, b), s: e / 2 };
   }
 
   function create(n) {
     const gens = [];
     for (let k = 0; k < n; k++) gens.push({ ...P.on(n, [k], 'Z'), s: 0 });
     return { n, gens };
-  }
-
-  function clone(st) {
-    return { n: st.n, gens: st.gens.map(r => ({ x: r.x.slice(), z: r.z.slice(), s: r.s })) };
   }
 
   // Express p as a product of the generators (it must commute with all of them, and the state is
@@ -63,7 +59,7 @@
       if (target.bits[col]) xor(target, rows[piv]);
     }
     if (target.bits.some(Boolean)) throw new Error('stab: operator is not in the stabilizer group');
-    let prod = { x: new Array(n).fill(0), z: new Array(n).fill(0), s: 0 };
+    let prod = { ...P.identity(n), s: 0 };
     for (const k of target.mask) prod = mul(st.gens[k], prod);
     return prod;
   }
@@ -115,5 +111,5 @@
     }
   }
 
-  QEC.stab = { create, clone, measure, peek, apply, reset, h, cnot, mul };
+  QEC.stab = { create, measure, peek, apply, reset, h, cnot, mul };
 })(window.QEC = window.QEC || {});

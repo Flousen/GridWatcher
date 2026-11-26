@@ -284,4 +284,36 @@ suite('surgery: every job can be done, within its stated cost', () => {
     const b = G.board('magic');
     assert.deepEqual(run(b, { hall: [k(0, 1), k(1, 1), k(2, 1)], joins: ['0,0,B', '2,0,B'] }), G.JOBS.magic);
   });
+
+  test('an edge key reads back as the edge it was made from', () => {
+    assert.deepEqual(T.unsegKey(T.segKey({ c: 3, r: 12, side: 'L' })), { c: 3, r: 12, side: 'L' });
+  });
+
+  test('after a move, the plan drops hallway under the patch, joins on gone edges and glues that no longer touch', () => {
+    const b = T.create({ w: 3, h: 2, nq: 2 });
+    const q1 = T.place(b, { label: 'q1', q: 0, c: 0, r: 0, fresh: false }).patch;
+    T.place(b, { label: 'q2', q: 1, c: 1, r: 0, fresh: false });
+    const gk = T.glueAt(b, T.segAt(b, 0, 0, 'R'));
+    const pl = { hall: new Set([k(0, 1), k(2, 1)]), joins: new Set(['0,0,B', '1,0,B']), glues: new Set([gk]) };
+    assert.ok(T.move(b, q1.id, 0, 1).ok);
+    T.prunePlan(b, pl);
+    assert.deepEqual([...pl.hall], [k(2, 1)]);
+    assert.deepEqual([...pl.joins], ['1,0,B']);
+    assert.equal(pl.glues.size, 0);
+    T.place(b, { label: 'q3', q: 1, c: 1, r: 1 });   // now q2's bottom edge faces a patch, not a hallway
+    T.prunePlan(b, pl);
+    assert.equal(pl.joins.size, 0);
+  });
+
+  test('a saved plan restores to the same board: patches, tiles, steps', () => {
+    const b = G.board('free');
+    G.FREE_LABELS.forEach((label, q) => T.place(b, { label, q, c: q, r: 0, fresh: false }));
+    T.widen(b, T.byLabel(b, 'q4').id, 'R');
+    b.used.add(k(0, 1));
+    const s = JSON.parse(JSON.stringify(T.snapshot(b)));
+    const back = T.restore(s);
+    assert.deepEqual(T.snapshot(back), s);
+    assert.equal(T.byLabel(back, 'q3').q, 2);
+    assert.ok(T.byLabel(back, 'q4').wide);
+  });
 });

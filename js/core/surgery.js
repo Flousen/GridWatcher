@@ -105,13 +105,12 @@
         rows.push({ c, t, outs, ok });
       }
     }
-    let pairOk = true, sameZ = true, sameX = true;
+    let sameZ = true, sameX = true;
     for (let k = 0; k < runs; k++) {
       const r = xorTrial(plan, 'pair', rng);
       sameZ = sameZ && r.sameZ; sameX = sameX && r.sameX;
-      pairOk = pairOk && r.sameZ && r.sameX;
     }
-    rows.push({ pair: true, sameZ, sameX, ok: pairOk });
+    rows.push({ pair: true, sameZ, sameX, ok: sameZ && sameX });
     return { rows, ok: rows.every(r => r.ok) };
   }
 

@@ -28,6 +28,7 @@
   const key = (c, r) => c + ',' + r;
   const unkey = k => k.split(',').map(Number);
   const segKey = s => `${s.c},${s.r},${s.side}`;
+  const unsegKey = k => { const [c, r, side] = k.split(','); return { c: Number(c), r: Number(r), side }; };
 
   // ── Patches ──────────────────────────────────────────────────────────────
   // patch = { id, label, q, kind, c, r, wide, tb, mixed, fresh }
@@ -64,10 +65,6 @@
     return { w, h, nq, lane: new Set(lane.map(([c, r]) => key(c, r))), patches: [], used: new Set(), steps: 0, nextId: 1 };
   }
 
-  function clone(b) {
-    return { ...b, lane: new Set(b.lane), used: new Set(b.used), patches: b.patches.map(p => ({ ...p })) };
-  }
-
   const inside = (b, c, r) => c >= 0 && r >= 0 && c < b.w && r < b.h;
   function owner(b, c, r) {
     return b.patches.find(p => cellsOf(p).some(t => t.c === c && t.r === r)) || null;
@@ -90,6 +87,12 @@
 
   const fail = (why, mark = {}) => ({ ok: false, why, mark: { cells: [], segs: [], ...mark } });
 
+  // Lane tiles may be crossed or borrowed (turns, hallways), but no patch may stand there.
+  function laneFail(b, cells) {
+    const on = cells.map(t => key(t.c, t.r)).filter(k => b.lane.has(k));
+    return on.length ? fail('That tile is kept free for hallways.', { cells: on }) : null;
+  }
+
   // Mark a patch's tiles as used. While it is fresh, remember which ones it added, so that a
   // fresh patch that is put somewhere else does not leave a used tile behind.
   function claim(b, p) {
@@ -107,8 +110,9 @@
     for (const t of cellsOf(p)) {
       if (!inside(b, t.c, t.r)) return fail('That is off the board.');
       if (owner(b, t.c, t.r)) return fail('That tile is taken.', { cells: [key(t.c, t.r)] });
-      if (b.lane.has(key(t.c, t.r))) return fail('That tile is kept free for hallways.', { cells: [key(t.c, t.r)] });
     }
+    const lane = laneFail(b, cellsOf(p));
+    if (lane) return lane;
     b.nextId++;
     b.patches.push(p);
     claim(b, p);
@@ -131,7 +135,8 @@
     if (p.c === c && p.r === r) return fail('It is already there.');
     const fits = (cc, rr) => cellsOf({ ...p, c: cc, r: rr }).every(t => inside(b, t.c, t.r) && (!owner(b, t.c, t.r) || owner(b, t.c, t.r) === p));
     if (!fits(c, r)) return fail('It does not fit there: the tiles must be free.', { cells: cellsOf({ ...p, c, r }).filter(t => inside(b, t.c, t.r)).map(t => key(t.c, t.r)) });
-    if (cellsOf({ ...p, c, r }).some(t => b.lane.has(key(t.c, t.r)))) return fail('That tile is kept free for hallways.', { cells: cellsOf({ ...p, c, r }).map(t => key(t.c, t.r)) });
+    const lane = laneFail(b, cellsOf({ ...p, c, r }));
+    if (lane) return lane;
     // breadth-first search over positions, so the stretch goes the shortest way
     const prev = new Map([[key(p.c, p.r), null]]), queue = [[p.c, p.r]];
     while (queue.length) {
@@ -184,7 +189,8 @@
     if (p.wide) return fail('It is already wide.');
     const nc = dir === 'L' ? p.c - 1 : p.c + 1;
     if (!isFree(b, nc, p.r)) return fail(`${p.label} needs a free tile on its ${dir === 'L' ? 'left' : 'right'} to widen.`, inside(b, nc, p.r) ? { cells: [key(nc, p.r)] } : {});
-    if (b.lane.has(key(nc, p.r))) return fail('That tile is kept free for hallways.', { cells: [key(nc, p.r)] });
+    const lane = laneFail(b, [{ c: nc, r: p.r }]);
+    if (lane) return lane;
     const c0 = Math.min(p.c, nc);
     const room = side => [c0, c0 + 1].filter(c => isFree(b, c, p.r + STEP[side][1])).length;
     // the old top/bottom edges become the long side, so its type stays tb
@@ -207,9 +213,8 @@
 
   // Both segments of a border key.
   function borderSegs(b, k) {
-    const [c, r, side] = k.split(',');
-    const cc = Number(c), rr = Number(r), [dc, dr] = STEP[side];
-    return [segAt(b, cc, rr, side), segAt(b, cc + dc, rr + dr, OPP[side])];
+    const { c, r, side } = unsegKey(k), [dc, dr] = STEP[side];
+    return [segAt(b, c, r, side), segAt(b, c + dc, r + dr, OPP[side])];
   }
 
   // All borders where two patches touch, with the edge types that face each other.
@@ -251,11 +256,10 @@
       pieces.push({ kind: 'hall', cells, segs: [] });
     }
     for (const sk of joins) {
-      const [c, r, side] = sk.split(','), cc = Number(c), rr = Number(r);
-      const s = segAt(b, cc, rr, side);
+      const { c, r, side } = unsegKey(sk), s = segAt(b, c, r, side);
       if (!s) return fail('That edge is gone.', { segs: [sk] });
-      const [dc, dr] = STEP[side], t = key(cc + dc, rr + dr);
-      if (!piece.has(t)) return fail(`That edge of ${owner(b, cc, rr).label} does not touch the hallway.`, { segs: [sk] });
+      const [dc, dr] = STEP[side], t = key(c + dc, r + dr);
+      if (!piece.has(t)) return fail(`That edge of ${owner(b, c, r).label} does not touch the hallway.`, { segs: [sk] });
       pieces[piece.get(t)].segs.push(s);
     }
     const empty = pieces.find(pc => !pc.segs.length);
@@ -308,6 +312,32 @@
     tick(b, ms.length ? COST.hall : 0);
   }
 
+  // After the board changed, drop what no longer means anything from a drawn plan:
+  // hallway tiles a patch now stands on, joins on edges that are gone or now face a patch,
+  // glues on edges that no longer touch.
+  function prunePlan(b, plan) {
+    for (const k of [...plan.hall]) if (owner(b, ...unkey(k))) plan.hall.delete(k);
+    for (const k of [...plan.joins]) {
+      const s = unsegKey(k), [dc, dr] = STEP[s.side];
+      if (!segAt(b, s.c, s.r, s.side) || owner(b, s.c + dc, s.r + dr)) plan.joins.delete(k);
+    }
+    for (const k of [...plan.glues]) { const [a, z] = borderSegs(b, k); if (!a || !z || glueAt(b, a) !== k) plan.glues.delete(k); }
+  }
+
+  // A finished plan as plain data (for storage), and a frozen board back from it.
+  // Patches keep their order, so patch k stores qubit k.
+  function snapshot(b) {
+    return { tiles: tiles(b), steps: b.steps, w: b.w, h: b.h, used: [...b.used],
+      patches: b.patches.map(p => ({ label: p.label, c: p.c, r: p.r, wide: p.wide, tb: p.tb, mixed: p.mixed })) };
+  }
+  function restore(s) {
+    const b = create({ w: s.w, h: s.h, nq: s.patches.length });
+    s.patches.forEach((p, q) => place(b, { ...p, q, fresh: false }));
+    b.used = new Set(s.used);
+    b.steps = s.steps;
+    return b;
+  }
+
   // "Z₁·X₃" for q-numbered patches, "Z(c)·X(t)" for named ones.
   const SUB = '₀₁₂₃₄₅₆₇₈₉';
   function opText(op, labelOf) {
@@ -322,8 +352,9 @@
   }
 
   QEC.tiles = {
-    COST, STEP, OPP, key, unkey, segKey,
-    create, clone, cellsOf, segsOf, inside, owner, isFree, patch, byLabel, segAt, tiles,
+    COST, STEP, OPP, key, unkey, segKey, unsegKey,
+    create, cellsOf, segsOf, inside, owner, isFree, patch, byLabel, segAt, tiles,
     place, remove, move, turn, widen, glueAt, borderSegs, borders, measurements, book, opText,
+    prunePlan, snapshot, restore,
   };
 })(window.QEC = window.QEC || {});
