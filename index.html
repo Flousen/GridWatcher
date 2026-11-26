@@ -39,6 +39,7 @@ a.card:hover { border-color: var(--cyan); box-shadow: 0 0 18px #00eeff22; }
 .card.soon .num { border-style: dashed; color: var(--dim); border-color: var(--dim); }
 .body { flex: 1; min-width: 0; }
 .ctitle { color: #dde6ee; font-weight: bold; letter-spacing: 2px; font-size: 0.95em; }
+.beta { color: var(--purple); border: 1px solid var(--purple); border-radius: 3px; font-size: 0.7em; letter-spacing: 2px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; white-space: nowrap; }
 .idea { color: #94a5b6; font-size: 0.82em; margin-top: 4px; line-height: 1.5; }
 .state { font-size: 0.72em; letter-spacing: 2px; color: var(--dim); white-space: nowrap; }
 .card.done .state { color: var(--green); }
@@ -96,7 +97,7 @@ const CHAPTERS = [
   { id: 'ch4', href: 'ch5-surface.html',      title: 'SURFACE CODE',      idea: 'Two kinds of checks on a grid catch both kinds of errors. Decode it yourself.' },
   { id: 'ch5', href: 'ch6-threshold.html',    title: 'THRESHOLD LAB',     idea: 'When do bigger codes help? Run thousands of shots and find the tipping point.' },
   // id 'surgery' is new; the old placeholder 'ch6' never saved progress, so it is simply gone.
-  { id: 'surgery', href: 'ch7-surgery.html',  title: 'GAME OF SURFACE CODES', idea: 'Protected qubits become tiles. Compute by asking parity questions between them, and count the cost in tiles, steps and qubits.' },
+  { id: 'surgery', href: 'ch7-surgery.html',  title: 'GAME OF SURFACE CODES', beta: true, idea: 'Protected qubits become tiles. Compute by asking parity questions between them, and count the cost in tiles, steps and qubits.' },
 ];
 
 function render() {
@@ -109,7 +110,7 @@ function render() {
     if (c.href) card.href = c.href;
     card.innerHTML = `
       <div class="num">${done ? '✓' : i + 1}</div>
-      <div class="body"><div class="ctitle">${c.title}</div><div class="idea">${c.idea}</div></div>
+      <div class="body"><div class="ctitle">${c.title}${c.beta ? '<span class="beta">BETA</span>' : ''}</div><div class="idea">${c.idea}</div></div>
       <div class="state">${c.href ? (done ? 'DONE' : 'PLAY →') : 'SOON'}</div>`;
     path.appendChild(card);
   });
