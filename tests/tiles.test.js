@@ -225,19 +225,59 @@ suite('surgery: every job can be done, within its stated cost', () => {
     assert.equal(T.tiles(b), 10);
   });
 
-  test('TILES OR STEPS, free round: the par plan (8 tiles × 2 steps) does all three jobs', () => {
+  test('TILES OR STEPS, free round: a row over a hallway does all three jobs in 8 tiles × 2 steps', () => {
     const b = G.board('free');
     G.FREE_LABELS.forEach((label, q) => T.place(b, { label, q, c: q, r: 0 }));
     const first = run(b, { hall: [k(0, 1), k(1, 1)], joins: ['0,0,B', '1,0,B'], glues: [glue(b, 2, 0, 'R')] });
     const second = run(b, { hall: [0, 1, 2, 3].map(c => k(c, 1)), joins: ['0,0,B', '1,0,B', '2,0,B', '3,0,B'] });
     assert.deepEqual([...first, ...second].sort(), G.JOBS.free.slice().sort());
+    assert.equal(T.tiles(b), 8);
+    assert.equal(b.steps, 2);
+  });
+
+  test('TILES OR STEPS, free round: the par plan (6 tiles × 2 steps) puts all four round one hallway tile', () => {
+    const b = G.board('free');
+    // q1 above, q2 left, q3 right, q4 below the hallway tile (1,1); each shows it a Z edge
+    [[1, 0, 'Z'], [0, 1, 'X'], [2, 1, 'X'], [1, 2, 'Z']].forEach(([c, r, tb], q) => T.place(b, { label: G.FREE_LABELS[q], q, c, r, tb }));
+    const first = run(b, { hall: [k(1, 1)], joins: ['1,0,B', '0,1,R', '2,1,L', '1,2,T'] });
+    // the same tile asks Z₁·Z₂ while (2,2), between q3's and q4's X edges, asks X₃·X₄
+    const second = run(b, { hall: [k(1, 1), k(2, 2)], joins: ['1,0,B', '0,1,R', '2,1,B', '1,2,R'] });
+    assert.deepEqual([...first, ...second].sort(), G.JOBS.free.slice().sort());
     assert.equal(T.tiles(b), G.PAR.free.tiles);
     assert.equal(b.steps, G.PAR.free.steps);
+  });
+
+  test('TILES OR STEPS, free round: no plan does it in one step (every job pair shares a patch, or Z₁·Z₂·Z₃·Z₄ does)', () => {
+    const ops = G.JOBS.free.map(s => P.fromString(s));
+    const support = op => [0, 1, 2, 3].filter(q => P.get(op, q) !== 'I');
+    const shares = (a, c) => support(a).some(q => support(c).includes(q));
+    const all = ops.find(op => support(op).length === 4);
+    assert.ok(ops.filter(op => op !== all).every(op => shares(op, all)), 'the four-qubit job shares a patch with both others');
   });
 
   test('the free round\'s jobs commute, so any order (or two at once) is a correct plan', () => {
     const ops = G.JOBS.free.map(s => P.fromString(s));
     for (const a of ops) for (const c of ops) assert.ok(P.commutes(a, c));
+  });
+
+  test('XOR feedback: the card\'s questions in order move it on; anything else is listed as off', () => {
+    const [zz, xx] = G.RECIPE, xc = P.fromString('XXI');
+    assert.equal(G.recipeProgress([]).step, 0);
+    assert.ok(P.equal(G.recipeProgress([]).next, zz));
+    const wrong = G.recipeProgress([xc]);
+    assert.equal(wrong.step, 0);
+    assert.equal(wrong.off.length, 1);
+    assert.equal(G.recipeProgress([xx, zz]).step, 1, 'X(h)·X(t) first is not the card\'s order');
+    const done = G.recipeProgress([zz, xx]);
+    assert.equal(done.step, 2);
+    assert.equal(done.next, null);
+    assert.equal(done.off.length, 0);
+  });
+
+  test('XOR feedback agrees with the test: following the card passes, the wrong order fails', () => {
+    const [zz, xx] = G.RECIPE, rng = QEC.makeRng(7);
+    assert.ok(G.xorTest([{ op: zz }, { op: xx }, { read: 'Z' }], rng).ok);
+    assert.equal(G.xorTest([{ op: xx }, { op: zz }, { read: 'Z' }], rng).ok, false);
   });
 
   test('MAGIC: a hallway joins q1\'s and the magic tile\'s Z edges in 1 step', () => {

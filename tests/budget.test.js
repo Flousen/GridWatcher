@@ -51,4 +51,11 @@ suite('budget (cost and failure of a plan)', () => {
     assert.deepEqual(B.factoryRun(6, 2).used, [12, 13, 23, 24, 34, 35]);
     assert.equal(B.factoryRun(6, 6).steps, 17);
   });
+
+  test('more factories are never slower; the fewest that finish 6 T gates in under 40 steps is 2', () => {
+    for (let f = 1; f < 8; f++) assert.ok(B.factoryRun(6, f + 1).steps <= B.factoryRun(6, f).steps, `f = ${f}`);
+    assert.equal(B.fewestFactories(6, 40), 2);
+    assert.equal(B.fewestFactories(6, 70), 1);
+    assert.equal(B.fewestFactories(6, 5), null, 'six T gates take at least six steps');
+  });
 });

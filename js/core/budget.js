@@ -54,5 +54,12 @@
     return { steps: t, used };
   }
 
-  QEC.budget = { tileStep, runFail, extend, smallestSafe, physicalQubits, litinskiPL, litinskiFail, factoryRun };
+  // The fewest factories (up to max) that finish `count` magic states in fewer than `goal` steps,
+  // or null. More factories never make the program slower, so the first one that fits is the answer.
+  function fewestFactories(count, goal, max = 8, period = 11) {
+    for (let f = 1; f <= max; f++) if (factoryRun(count, f, period).steps < goal) return f;
+    return null;
+  }
+
+  QEC.budget = { tileStep, runFail, extend, smallestSafe, physicalQubits, litinskiPL, litinskiFail, factoryRun, fewestFactories };
 })(window.QEC = window.QEC || {});

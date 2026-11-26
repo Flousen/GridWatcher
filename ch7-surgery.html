@@ -138,9 +138,16 @@ function segLine(p, s) {
 
 // What is under the pointer: an edge, a patch, or a tile. With `assist`, a tap on a free tile close
 // to a patch's edge counts as a tap on that edge (edges are thin on a phone).
+// The bands are a share of a tile, but never thinner than about a fingertip on screen: on a phone
+// the eight-tile row of level 5 has tiles only ~40 px wide.
+function tapBands() {
+  const w = cv.getBoundingClientRect().width, px = w > 0 ? S_ * w / cv.width : S_;
+  return { edge: Math.min(0.4, Math.max(0.27, 16 / px)), near: Math.min(0.35, Math.max(0.2, 14 / px)) };
+}
 function hit(pt, assist = true) {
   const c = Math.floor((pt.x - PAD) / S_), r = Math.floor((pt.y - PADY) / S_);
   if (!g.b || !T.inside(g.b, c, r)) return null;
+  const band = tapBands();
   const u = (pt.x - PAD) / S_ - c, v = (pt.y - PADY) / S_ - r;
   const p = T.owner(g.b, c, r);
   const dist = { T: v, B: 1 - v, L: u, R: 1 - u };
@@ -149,7 +156,7 @@ function hit(pt, assist = true) {
       let near = null;
       for (const side of ['T', 'R', 'B', 'L']) {
         const [dc, dr] = T.STEP[side], s = T.segAt(g.b, c + dc, r + dr, T.OPP[side]);
-        if (s && dist[side] < 0.2 && (!near || dist[side] < dist[near.side2])) near = { s, side2: side };
+        if (s && dist[side] < band.near && (!near || dist[side] < dist[near.side2])) near = { s, side2: side };
       }
       if (near) return { type: 'seg', seg: near.s, patch: T.owner(g.b, near.s.c, near.s.r), cell: T.key(c, r) };
     }
@@ -157,7 +164,7 @@ function hit(pt, assist = true) {
   }
   const segs = T.segsOf(p).filter(s => s.c === c && s.r === r);
   let best = null;
-  for (const s of segs) if (dist[s.side] < 0.27 && (!best || dist[s.side] < dist[best.side])) best = s;
+  for (const s of segs) if (dist[s.side] < band.edge && (!best || dist[s.side] < dist[best.side])) best = s;
   return best ? { type: 'seg', seg: best, patch: p } : { type: 'patch', patch: p };
 }
 
@@ -186,7 +193,7 @@ const LEVELS = [
   {
     name: 'GLUE', board: 'glue', rounds: 3,
     tools: { move: true, glue: true, read: ['Z'] },
-    start() { this.done = 0; this.newRound(); },
+    start() { this.done = 0; this.q1s = []; this.newRound(); },
     newRound() {
       setBoard('glue', 'X');
       g.round = this.done;
@@ -221,7 +228,9 @@ const LEVELS = [
         return;
       }
       const agree = (a === c) === (this.glued > 0);
-      status(`q1 read ${a}, q2 read ${c}: ${a === c ? 'equal' : 'different'}, just as GLUE said.`, agree ? 'success' : 'error');
+      this.q1s.push(a);
+      const alone = this.q1s.length > 1 ? ` q1 alone, round by round: ${this.q1s.join(', ')}.` : '';
+      status(`q1 read ${a}, q2 read ${c}: ${a === c ? 'equal' : 'different'}, just as GLUE said.${alone}`, agree ? 'success' : 'error');
       QEC.ui.fx.good(cv);
       this.done++;
       bites.notify('read');
@@ -233,10 +242,11 @@ const LEVELS = [
       { t: 'Drag q2 so that an <span class="z">orange</span> edge of q2 touches an orange edge of q1. A move costs 1 time step.', wait: 'place', hint: 'drag q2' },
       { t: 'Tap the border where they touch, then press ▶ GO. For one time step the gap between them gets new checks.', wait: 'glue', hint: 'tap the shared border, then ▶ GO' },
       { t: 'Each new check in the gap lights at random. Their <b>product</b> doesn\'t: it is Z₁·Z₂, the parity of the two stored qubits.', onShow: () => bites.feedback(`You got <b>${sign(LEVELS[1].glued)}</b>: ${LEVELS[1].glued > 0 ? 'equal' : 'different'}.`) },
+      { t: 'GLUE gave you the pair\'s parity. If you read only q1 now, what will you get?', ask: ['0', '1', 'A coin toss: 0 or 1'], answer: 2, kind: 'predict', id: 'glue-alone' },
       { t: 'Now read both tiles in Z. Will the two results match what GLUE said?', ask: ['Always', 'About half the time', 'Never', 'Can\'t say'], answer: 0, kind: 'predict', id: 'glue-read' },
       { t: 'Read both: tap a tile, then READ Z.', wait: 'read', hint: 'tap a tile → READ Z, for both' },
-      'Before GLUE each tile was a coin toss. It still is, but now both coins land the way GLUE said. Physicists call that <b>entangled</b>, and the move you just made <b>lattice surgery</b>.',
-      { t: 'Two more rounds, to see that it holds every time. Each GLUE result is random; the reads always match it.', wait: 'rounds', hint: 'NEXT ROUND, then move, glue, read' },
+      'Before GLUE each tile was a coin toss. It still is: GLUE never read q1 or q2, only whether they agree. But now both coins land the way GLUE said. Physicists call that <b>entangled</b>, and the move you just made <b>lattice surgery</b>.',
+      { t: 'Two more rounds, to see that it holds every time. Watch q1 alone under the board: each round it is a fresh coin toss, while the pair always matches GLUE.', wait: 'rounds', hint: 'NEXT ROUND, then move, glue, read' },
     ],
   },
 
@@ -272,6 +282,8 @@ const LEVELS = [
       { t: 'Job <b>Z₁·Z₃</b>. Paint a hallway (tap or drag over free tiles), tap the two <span class="z">orange</span> edges it should join, then press ▶ GO.', wait: 'job', hint: 'paint, join two edges, ▶ GO' },
       '1 step, whatever the length. A longer hallway costs <b>tiles</b>, not time.',
       { t: 'A hallway can join any number of edges. It asks for the product of all of them, like a sensor from Chapter 1 wired to many nodes. Job <b>Z₁·Z₃·Z₄</b>.', wait: 'job', hint: 'join three Z edges, ▶ GO' },
+      { t: 'Say a hallway asks Z₁·Z₃·Z₄ and gets <b>−1</b>. If you then read q1, q3 and q4 in Z, what do you know?', ask: ['All three read 1', 'An odd number read 1, but not which', 'Exactly one reads 1', 'Nothing: the answer was random'], answer: 1, kind: 'check', id: 'hallway-parity',
+        reply: (i, ok) => `${ok ? '✓ Right.' : '✗ Not quite: an odd number read 1.'} −1 means odd parity: one of them, or all three. Like a sensor from Chapter 1, the hallway tells you the parity, never which qubit.` },
       { t: 'Now the card wants q2\'s <span class="x">X</span>: its cyan edge. Job <b>X₂·Z₃</b>.', wait: 'job', hint: 'join q2\'s X edge and q3\'s Z edge' },
       { t: 'Last job: <b>Y₂</b>. Y is X and Z together (Chapter 5), so join both an X and a Z edge of q2. A square tile never shows both on one side. So tap q2 and <b>WIDEN</b> it (1 step), then join the two edges on its top side.', wait: 'job', hint: 'tap q2 → WIDEN ▸, then join both top edges' },
       'Simplified: a real Y measurement also needs a small twist in the hallway. The game does that part for you.',
@@ -281,7 +293,7 @@ const LEVELS = [
   // ── 4 XOR ──
   {
     name: 'XOR', board: 'xor',
-    tools: { glue: true, read: ['Z'], readOnly: 'h', turn: true, place: { label: 'h', q: 1, basis: 'X' } },
+    tools: { glue: true, read: ['Z'], readOnly: 'h', move: true, moveOnly: 'h', turn: true, place: { label: 'h', q: 1, basis: 'X' } },
     start() { this.newRound(); },
     newRound() {
       setBoard('xor', 'Z');
@@ -292,9 +304,27 @@ const LEVELS = [
     },
     // a new h starts a new try: questions asked of an earlier h no longer belong to the recipe
     afterPlace() { this.record = []; renderRecipe(); },
+    // Say at once whether each question was the card's next one, not only after the test.
     afterStep(ms) {
-      for (const m of ms) this.record.push({ op: m.op });
+      const ops = this.record.map(r => r.op), want = G.recipeProgress(ops).next, off = [];
+      for (const m of ms) {
+        const k = G.recipeProgress(ops).off.length;
+        ops.push(m.op);
+        this.record.push({ op: m.op });
+        if (G.recipeProgress(ops).off.length > k) off.push(m);
+      }
       renderRecipe();
+      const now = G.recipeProgress(ops);
+      if (!off.length) {
+        status(now.next ? `✓ That is step ${now.step + 1} of the card. Next: GLUE ${opName(now.next)}.` : '✓ Both questions asked. Now READ h in Z.', 'success');
+        return;
+      }
+      const asked = off.map(m => opName(m.op)).join(' and ');
+      status(want
+        ? `You asked ${asked}, but the card's next question is ${opName(want)}. A question off the card can spoil the test: START OVER and place h so that its edges face the ones on the card.`
+        : `The card has no more questions: READ h in Z. ${asked} was extra.`, 'warn');
+      g.mark = { cells: [], segs: off.flatMap(m => m.segs.map(T.segKey)), until: performance.now() + 2600 };
+      QEC.ui.fx.nudge(cv);
     },
     afterRead(p, basis) {
       const res = G.xorTest([...this.record, { read: basis }], rng);
@@ -362,7 +392,7 @@ const LEVELS = [
         QEC.progress.save(CH, 'plan', snapshot());
         status(s <= par
           ? `✓ All three jobs: ${score.tiles} tiles × ${score.steps} steps = ${s}. ${s < par ? 'You beat our best plan (' + par + ')!' : 'As good as our best plan.'}`
-          : `✓ All three jobs: ${score.tiles} tiles × ${score.steps} steps = ${s}. Our best plan scores ${par}. Tip: two questions on different patches can share a step, and a tile you use again is not paid twice.`, 'success');
+          : `✓ All three jobs: ${score.tiles} tiles × ${score.steps} steps = ${s}. Our best plan scores ${par}. Tip: two questions on different patches can share a step, a tile you use again is not paid twice, and one hallway tile can touch four patches.`, 'success');
         bites.notify('roundC');
       } else {
         status(`✓ ${score.tiles} tiles × ${score.steps} steps = ${s}.`, 'success');
@@ -371,6 +401,7 @@ const LEVELS = [
     },
     bites: [
       'Litinski scores a plan with two numbers: <b>tiles</b> (every tile it ever uses) and <b>steps</b>. A real chip pays for every tile in every step, so the score is TILES × STEPS. Lower is better.',
+      { t: 'Job <b>X₂·Z₃</b> needs q2\'s X edge to face a hallway. Two ways: <b>turn</b> q2 (3 steps, no extra tiles), or use <b>wide</b> patches that show both edges on one side (no turn, but twice the tiles). Which will score lower?', ask: ['Turning', 'Wide patches', 'About the same'], answer: 1, kind: 'predict', id: 'turn-or-wide' },
       { t: 'A compact row: four tiles over a grey <b>lane</b> that is kept free for hallways. Only Z edges face the lane, but job <b>X₂·Z₃</b> needs q2\'s X. Tap q2 and <b>TURN</b> it (3 steps; it borrows a lane tile while it turns), then build the hallway.', wait: 'roundA', hint: 'TURN q2, then hallway, ▶ GO' },
       { t: 'The same job, but now every qubit sits in a <b>wide</b> patch that shows both edges on the lane side. No turning needed.', wait: 'roundB', hint: 'hallway, ▶ GO', onShow: () => LEVELS[4].setRound('wide') },
       { t: 'Compare.', onShow: () => { const s = LEVELS[4].scores, f = x => `<b>${x.tiles} tiles × ${x.steps} steps = ${x.tiles * x.steps}</b>`; bites.feedback(`Compact: ${f(s.compact)}. Wide: ${f(s.wide)}. Fewer tiles, or fewer steps: that is the trade.`); } },
@@ -391,7 +422,10 @@ const LEVELS = [
       { t: 'Your plan may fail at most <b>1 time in 100</b> runs. Pick the <b>smallest</b> d that is safe, then LOCK IN. RUN 1000 TIMES lets you try a d first.', wait: 'pick-d', hint: 'pick d, LOCK IN' },
       { t: 'Your program grows <b>1000× longer</b>. Which d keeps it safe now?', ask: ['The same d is still enough', 'A few sizes bigger', 'About 1000 times bigger', 'No d is enough'], answer: 1, kind: 'check', id: 'scale-d',
         reply: (i, ok) => `${ok ? '✓ Right.' : '✗ Not quite: a few sizes bigger.'} ${scaleText()} Try ×1000 next to the dial.` },
-      'Errors fall off a cliff as d grows: every +2 divides them by the same factor. So a 1000× bigger job needs only a few more rings of qubits. That holds only <b>below threshold</b>. Lab B from Chapter 6, at 15%, could pick any d and still lose.',
+      'Errors fall off a cliff as d grows: every +2 divides them by the same factor. So a 1000× bigger job needs only a few more rings of qubits.',
+      { t: 'That needs one thing: being <b>below threshold</b>. Lab B from Chapter 6 glitches at p = 15%, above it. Which d keeps your plan safe there?', ask: ['A bigger d than here', 'The same d as here', 'No d at all'], answer: 2, kind: 'predict', id: 'above-threshold-d' },
+      { t: 'Find out: run the same lab at p = 15%.', wait: 'labB', hint: 'press ▶ RUN AT p = 15%', onShow: () => { g.lab.B.shown = true; renderLab(); } },
+      'Above threshold every +2 in d makes things <b>worse</b>: a bigger patch has more qubits, so more ways for a chain to get through. Below threshold a bigger d buys safety; above it, no d can.',
       'Honest numbers: this lab uses Chapter 6\'s model, where checks never misfire (threshold about 10%). Real checks misfire, so a real step repeats the checks about d times, like the repetition code but in time, and the threshold drops to about 1%.',
       'Litinski ran these numbers for a real job: 100 qubits and 100 million T gates (the bonus level says what those are). At p = 0.1% he needs d = 27: about <b>310 000 qubits for 7 hours</b>, or 1 000 000 qubits for 45 minutes if you spend more tiles.',
     ],
@@ -412,7 +446,7 @@ const LEVELS = [
       g.unknown = new Set(['q1']);
       this.consumed = true;
       setJob(null);
-      status('✓ Magic state used in 1 step. The magic tile was read out and removed (0 steps).', 'success');
+      status('✓ Magic state used in 1 step. The magic tile was read out and removed (0 steps). Half the time q1 then needs a fix-up; software keeps track of it and adjusts the later jobs.', 'success');
       bites.notify('consume');
     },
     bites: [
@@ -422,7 +456,7 @@ const LEVELS = [
       'Magic states come out noisy. So a <b>factory</b> takes 15 noisy ones, runs checks, and throws the batch away if any check lights: Chapters 1 and 3 again. Litinski\'s factory uses 11 tiles for 11 steps per good magic state, and lowers its error from p to 35p³.',
       { t: 'Your program needs 6 magic states, one per T gate. One factory makes one every 11 steps. About how many steps will the program take?', ask: ['About 6', 'About 11', 'About 66', 'About 660'], answer: 2, kind: 'predict', id: 'magic-time', onAnswer: () => factoryView() },
       { t: 'Run it with one factory.', wait: 'run1', hint: 'press ▶ RUN' },
-      { t: 'Too slow. Finish in <b>under 40 steps</b>: add factories (11 tiles each), then RUN again.', wait: 'fast', hint: '+ FACTORY, ▶ RUN' },
+      { t: 'Too slow. Finish in <b>under 40 steps</b>. But each factory costs 11 tiles, so use as <b>few</b> factories as you can. Then RUN again.', wait: 'fast', hint: '+ FACTORY, ▶ RUN' },
       'The factory, not your qubits, sets the pace. Litinski: with p = 0.01%, one factory runs his 100-qubit job in 4 hours on 55 000 qubits; with 11 factories it takes 22 minutes on 120 000.',
     ],
   },
@@ -495,7 +529,8 @@ function selectPatch(p) {
 }
 
 function tryMove(p, c, r) {
-  if (!g.tools.move) return refuse(g.lv.name === 'XOR' ? 'c and t stay where they are: the rest of the program needs them there.' : 'In this level tiles stay where they are.');
+  if (g.tools.moveOnly && p.label !== g.tools.moveOnly) return refuse(`${p.label} stays where it is: the rest of the program needs it there. Only ${g.tools.moveOnly} may move.`);
+  if (!g.tools.move) return refuse('In this level tiles stay where they are.');
   const res = T.move(g.b, p.id, c, r);
   if (!res.ok) return refuse(res.why, res.mark);
   for (const t of T.cellsOf(p)) g.plan.hall.delete(T.key(t.c, t.r));
@@ -689,7 +724,8 @@ function renderActions() {
     if (mayRead) for (const basis of t.read) acts.push(btn(`READ ${basis}`, () => doRead(p, basis), 'tool-' + basis));
     if (t.turn && !p.wide) acts.push(btn(p.fresh ? 'TURN (free)' : 'TURN (3 steps)', () => doTurn(p)));
     if (t.widen && !p.wide) acts.push(btn('◂ WIDEN', () => doWiden(p, 'L')), btn('WIDEN ▸', () => doWiden(p, 'R')));
-    const note = t.move ? 'drag it to move' : acts.length ? '' : 'nothing to do with the tile itself here: tap its edges';
+    const mayMove = t.move && (!t.moveOnly || t.moveOnly === p.label);
+    const note = mayMove ? 'drag it to move' : acts.length ? '' : 'nothing to do with the tile itself here: tap its edges';
     acts.forEach(a => el.appendChild(a));
     if (note) { const s2 = document.createElement('span'); s2.className = 'lbl'; s2.textContent = note; el.appendChild(s2); }
   } else if (g.cellSel && t.place) {
@@ -745,7 +781,7 @@ function renderRecipe(res) {
     html += '<h3 style="margin-top:8px">// TEST: 4 RUNS EACH //</h3><table><tr><th>c</th><th>t</th><th>t afterwards</th><th>want</th><th></th></tr>' +
       res.rows.filter(r => !r.pair).map(r => `<tr><td>${r.c}</td><td>${r.t}</td><td>${r.outs.map(v).join(' ')}</td><td>${r.c ^ r.t}</td><td class="${r.ok ? 'ok' : 'no'}">${r.ok ? '✓' : '✗'}</td></tr>`).join('') + '</table>';
     const pr = res.rows.find(r => r.pair);
-    html += `<div class="row">In between: c = |+⟩, t = 0 → an entangled pair? equal in Z <span class="${pr.sameZ ? 'ok' : 'no'}">${pr.sameZ ? '✓' : '✗'}</span>, equal in X <span class="${pr.sameX ? 'ok' : 'no'}">${pr.sameX ? '✓' : '✗'}</span></div>`;
+    html += `<div style="margin-top:6px">In between: c = |+⟩, t = 0 → an entangled pair? <span style="white-space:nowrap">equal in Z <span class="${pr.sameZ ? 'ok' : 'no'}">${pr.sameZ ? '✓' : '✗'}</span>,</span> <span style="white-space:nowrap">equal in X <span class="${pr.sameX ? 'ok' : 'no'}">${pr.sameX ? '✓' : '✗'}</span></span></div>`;
     if (!res.ok && res.rows.slice(0, 4).every(r => r.ok)) html += '<div class="no">Right on 0s and 1s, but the in-between input lost its X: along the way, this plan found out c. A real CNOT never looks.</div>';
     else if (!res.ok) html += '<div class="no">The recipe did not run: the questions you asked are not the ones on the card.</div>';
   }
@@ -828,7 +864,7 @@ function drawBoard(t) {
   // patches
   for (const p of b.patches) drawPatch(p, t, flash, mark);
   // dragged patch preview
-  if (g.drag && g.drag.moved && g.drag.h && g.drag.h.patch && g.drag.paint === null && g.drag.at && g.tools.move) {
+  if (g.drag && g.drag.moved && g.drag.h && g.drag.h.patch && g.drag.paint === null && g.drag.at && g.tools.move && (!g.tools.moveOnly || g.drag.h.patch.label === g.tools.moveOnly)) {
     const [c, r] = dragTarget(g.drag, g.drag.at);
     const R = patchRect({ ...g.drag.h.patch, c, r });
     ctx.save(); ctx.strokeStyle = '#fff'; ctx.globalAlpha = 0.6; ctx.setLineDash([6, 5]); ctx.lineWidth = 2;
@@ -1021,8 +1057,10 @@ function drawZoom(t) {
 // ── Level 6: the lab and the d dial ────────────────────────────────────────
 const LAB_P = 0.01, LAB_SHOTS = { 3: 100000, 5: 200000, 7: 400000 }, DS = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25];
 const BUDGET = 0.01;
+const LAB_B_P = 0.15, LAB_B_SHOTS = { 3: 1500, 5: 1500, 7: 1500 };   // Chapter 6's Lab B, above threshold
 function labStart() {
   const lab = g.lab = { rates: null, running: false, prog: {}, d: 3, len: 1, runs: null, locked: false };
+  lab.B = { rates: null, running: false, prog: {}, shown: false };
   const saved = QEC.progress.load(CH, 'plan');
   lab.plan = saved && saved.tiles ? saved : samplePlan();
   lab.sample = !(saved && saved.tiles);
@@ -1046,32 +1084,56 @@ function samplePlan() {
 }
 const labN = () => g.lab.plan.tiles * g.lab.plan.steps * g.lab.len;
 const pct = v => (v >= 0.995 ? '≈100%' : v >= 0.01 ? (100 * v).toFixed(1) + '%' : v >= 1e-4 ? (100 * v).toFixed(2) + '%' : v > 0 ? (100 * v).toPrecision(2) + '%' : '0%');
-function labRun() {
+// Run the Chapter 6 lab for d = 3, 5, 7 in small slices, so the page stays responsive.
+// run: where the results go ({ running, prog, rates, ext }), p: the glitch rate, shots: per d.
+function sweep(run, p, shots, onDone) {
   const lab = g.lab;
-  if (lab.running) return;
-  lab.running = true;
+  if (run.running) return;
+  run.running = true;
   const fails = { 3: 0, 5: 0, 7: 0 }, done = { 3: 0, 5: 0, 7: 0 }, codes = { 3: QEC.codes.rotatedSurfaceCode(3), 5: QEC.codes.rotatedSurfaceCode(5), 7: QEC.codes.rotatedSurfaceCode(7) };
   const r = QEC.makeRng(QEC.randomSeed());
   (function next() {
     if (g.lab !== lab) return;   // the player left or restarted the level: drop this run
     const t0 = performance.now();
     while (performance.now() - t0 < 40) {
-      const d = [3, 5, 7].find(x => done[x] < LAB_SHOTS[x]);
+      const d = [3, 5, 7].find(x => done[x] < shots[x]);
       if (!d) break;
-      const n = Math.min(4000, LAB_SHOTS[d] - done[d]);
-      fails[d] += QEC.sim.logicalErrorRate(codes[d], LAB_P, n, r).fails;
+      const n = Math.min(4000, shots[d] - done[d]);
+      fails[d] += QEC.sim.logicalErrorRate(codes[d], p, n, r).fails;
       done[d] += n;
     }
-    lab.prog = { done: { ...done }, fails: { ...fails } };
-    if ([3, 5, 7].some(x => done[x] < LAB_SHOTS[x])) { renderLab(); setTimeout(next, 0); return; }
-    lab.running = false;
-    lab.rates = { 3: fails[3] / done[3], 5: fails[5] / done[5], 7: fails[7] / done[7] };
-    lab.ext = B.extend(lab.rates);
+    run.prog = { done: { ...done }, fails: { ...fails } };
+    if ([3, 5, 7].some(x => done[x] < shots[x])) { renderLab(); setTimeout(next, 0); return; }
+    run.running = false;
+    run.rates = { 3: fails[3] / done[3], 5: fails[5] / done[5], 7: fails[7] / done[7] };
+    run.ext = B.extend(run.rates);
     status(`Lab done: ${(done[3] + done[5] + done[7]).toLocaleString('en')} shots.`, 'success');
     renderLab();
-    bites.notify('lab');
+    onDone();
   })();
   renderLab();
+}
+const labRun = () => sweep(g.lab, LAB_P, LAB_SHOTS, () => bites.notify('lab'));
+const labRunB = () => sweep(g.lab.B, LAB_B_P, LAB_B_SHOTS, () => bites.notify('labB'));
+
+// Lab B: the same patch at p = 15%. The table shows what each d would do to the player's plan.
+function labBHtml() {
+  const lab = g.lab, run = lab.B, n = lab.plan.tiles * lab.plan.steps;
+  let html = `<h3 style="margin-top:8px">// LAB B: p = 15%, ABOVE THRESHOLD //</h3><table><tr><th>d</th><th>shots</th><th>fooled</th><th>rate</th><th>plan fails</th></tr>`;
+  for (const d of [3, 5, 7]) {
+    const done = (run.prog.done || {})[d] || 0, f = (run.prog.fails || {})[d] || 0;
+    const plan = run.rates ? pct(B.runFail(B.tileStep(run.rates[d]), n)) : '–';
+    html += `<tr><td>${d}</td><td><span class="bar"><i style="width:${100 * done / LAB_B_SHOTS[d]}%"></i></span></td><td>${f}</td><td>${done ? pct(f / done) : '–'}</td><td class="${run.rates ? 'no' : ''}">${plan}</td></tr>`;
+  }
+  html += '</table>';
+  html += `<div class="row"><button class="btn go" id="btn-labB" ${run.running || run.rates ? 'disabled' : ''}>▶ RUN AT p = 15%</button></div>`;
+  if (run.rates) {
+    const grow = run.rates[3] > 0 ? Math.sqrt(run.rates[7] / run.rates[3]) : 1;
+    const best = B.smallestSafe(run.ext.rate, n, BUDGET, DS);
+    html += `<div>${grow > 1.05 ? `Each +2 in d makes the rate about <b>${grow.toFixed(1)}× bigger</b>, not smaller.` : 'Each +2 in d barely changes the rate.'} ` +
+      (best === null ? `<b class="no">No d up to ${DS[DS.length - 1]} keeps your plan under 1 in 100.</b>` : `Smallest safe d: ${best}.`) + '</div>';
+  }
+  return html;
 }
 function labLock() {
   const lab = g.lab;
@@ -1113,6 +1175,7 @@ function renderLab() {
   // a run where no d is safe (a very unlucky lab) may be run again
   const noSafe = lab.rates && B.smallestSafe(lab.ext.rate, lab.plan.tiles * lab.plan.steps, BUDGET, DS) === null;
   let html = `<h3>// YOUR PLAN //</h3><div>${lab.plan.tiles} tiles × ${lab.plan.steps} steps = <b>${lab.plan.tiles * lab.plan.steps} tile-steps</b>${lab.sample ? ' <span style="color:var(--dim)">(a sample plan: your Round C plan is not saved in this browser)</span>' : ''}</div>`;
+  if (lab.B.shown) html += labBHtml();
   html += `<h3 style="margin-top:8px">// THE LAB: X FLIPS ON ONE PATCH, p = 1% //</h3><table><tr><th>d</th><th>shots</th><th>fooled</th><th>rate</th></tr>`;
   for (const d of [3, 5, 7]) {
     const done = (lab.prog.done || {})[d] || 0, f = (lab.prog.fails || {})[d] || 0;
@@ -1135,6 +1198,7 @@ function renderLab() {
   $('panel').innerHTML = html;
   const on = (id, f) => { const el = $(id); if (el) el.onclick = () => { if (!locked()) f(); }; };
   on('btn-lab', labRun);
+  on('btn-labB', labRunB);
   on('btn-1000', () => { let n = 0; const f = runFailAt(lab.d); for (let i = 0; i < 1000; i++) if (rng() < f) n++; lab.runs = n; renderLab(); });
   on('btn-lockd', labLock);
   on('len1', () => { lab.len = 1; lab.runs = null; renderLab(); });
@@ -1163,11 +1227,13 @@ function renderFactory() {
   on('f-minus', () => { lv.factories = Math.max(1, lv.factories - 1); lv.ran = null; renderFactory(); });
   on('f-plus', () => { lv.factories = Math.min(8, lv.factories + 1); lv.ran = null; renderFactory(); });
   on('f-run', () => {
-    const res = B.factoryRun(T_COUNT, lv.factories);
-    lv.ran = { ...res, f: lv.factories, tiles: DATA_TILES + FACTORY_TILES * lv.factories, t0: performance.now() };
-    status(`${lv.factories} factor${lv.factories === 1 ? 'y' : 'ies'}: ${res.steps} steps.`, res.steps < GOAL_STEPS ? 'success' : 'info');
+    const res = B.factoryRun(T_COUNT, lv.factories), f = lv.factories, fewest = B.fewestFactories(T_COUNT, GOAL_STEPS);
+    lv.ran = { ...res, f, tiles: DATA_TILES + FACTORY_TILES * f, t0: performance.now() };
+    const head = `${f} factor${f === 1 ? 'y' : 'ies'}: ${res.steps} steps, ${lv.ran.tiles} tiles.`;
     bites.notify('run1');
-    if (res.steps < GOAL_STEPS) { QEC.ui.fx.good(cv); bites.notify('fast'); }
+    if (res.steps >= GOAL_STEPS) status(head, 'info');
+    else if (f > fewest) { status(`${head} Fast enough, but fewer factories would finish in time too, and each one you drop saves 11 tiles.`, 'warn'); QEC.ui.fx.nudge(cv); }
+    else { status(`✓ ${head} The fewest factories that finish in time.`, 'success'); QEC.ui.fx.good(cv); bites.notify('fast'); }
     renderFactory();
   });
 }
@@ -1194,7 +1260,7 @@ function drawFactory(t) {
       if (w <= 0) break;
       ctx.fillStyle = 'rgba(255,238,0,0.18)';
       ctx.fillRect(sx(s) + 1, y + 2, (sx(s + w) - sx(s)) - 2, rowH - 4);
-      if (shown >= s + 11) text(ctx, '★', sx(s + 11) - 6, y + rowH / 2, { font: '12px Courier New', color: '#ffee00' });
+      if (shown >= s + 11 && s + 11 <= end) text(ctx, '★', sx(s + 11) - 6, y + rowH / 2, { font: '12px Courier New', color: '#ffee00' });   // no star after the program ended
     }
   }
   const yD = 250;
@@ -1206,7 +1272,7 @@ function drawFactory(t) {
       ctx.fillRect(sx(s - 1), yD - 9, sx(s) - sx(s - 1), 18);
       text(ctx, 'T' + (k + 1), sx(s) - 4, yD - 18 - (k % 2) * 12, { font: '10px Courier New', color: '#00ff88' });
     });
-    if (shown >= run.steps) text(ctx, `done: ${run.steps} steps`, sx(Math.min(run.steps, maxT - 8)) + 40, yD + 20, { font: 'bold 12px Courier New', color: '#dde6ee' });
+    if (shown >= run.steps) text(ctx, `done: ${run.steps} steps`, Math.min(sx(run.steps) + 6, Rr), yD + 22, { font: 'bold 12px Courier New', color: '#dde6ee', align: 'right' });
   }
   drawLock();
 }

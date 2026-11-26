@@ -45,7 +45,11 @@
     magic: ['ZZ'],
   };
   // Best tiles × steps we found for the free round (see the tests). A player may beat it.
-  const PAR = { free: { tiles: 8, steps: 2 } };
+  // 2 steps is the least: Z₁·Z₂·Z₃·Z₄ shares a patch with each of the other two jobs.
+  // 6 tiles: one hallway tile with all four patches around it (each with a Z edge facing it) asks
+  // Z₁·Z₂·Z₃·Z₄; then that tile asks Z₁·Z₂ while a second one, in the corner between q3's and q4's
+  // X edges, asks X₃·X₄ in the same step.
+  const PAR = { free: { tiles: 6, steps: 2 } };
 
   // The labels the free round hands out, in order.
   const FREE_LABELS = ['q1', 'q2', 'q3', 'q4'];
@@ -111,5 +115,20 @@
     return { rows, ok: rows.every(r => r.ok) };
   }
 
-  QEC.surgery = { BOARDS, JOBS, PAR, FREE_LABELS, board, xorTrial, xorTest };
+  // Level 4 feedback: how far the questions asked so far follow the card, in order.
+  // ops: the measured operators (over c, h, t), oldest first. A question that is not the card's
+  // next one is listed in `off` (it does not move the card on).
+  // Returns { step: 0 | 1 | 2 recipe questions done, next: the next question or null, off }.
+  const RECIPE = [ZZ, XX];
+  function recipeProgress(ops) {
+    let step = 0;
+    const off = [];
+    for (const op of ops) {
+      if (step < RECIPE.length && P.equal(op, RECIPE[step])) step++;
+      else off.push(op);
+    }
+    return { step, next: RECIPE[step] || null, off };
+  }
+
+  QEC.surgery = { BOARDS, JOBS, PAR, FREE_LABELS, RECIPE, board, xorTrial, xorTest, recipeProgress };
 })(window.QEC = window.QEC || {});
