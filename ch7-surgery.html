@@ -14,7 +14,7 @@
 .panel {
   width: min(560px, 100%); margin-top: 12px; padding: 10px 14px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
-  font-size: 0.8em; line-height: 1.6; color: var(--text);
+  font-family: var(--read); font-size: 0.9em; line-height: 1.6; color: var(--text);
 }
 .panel:empty { display: none; }
 .panel h3 { font-size: 0.85em; letter-spacing: 3px; color: var(--cyan-dk); margin-bottom: 6px; font-weight: normal; }
@@ -25,7 +25,7 @@
 .panel .z { color: var(--z-col); font-weight: bold; }
 .panel .ok { color: var(--green); }
 .panel .no { color: var(--red); }
-.panel table { border-collapse: collapse; margin-top: 4px; }
+.panel table { border-collapse: collapse; margin-top: 4px; font-family: var(--mono); }
 .panel td, .panel th { padding: 2px 8px; border-bottom: 1px solid #1a2a3a; text-align: left; font-weight: normal; }
 .panel th { color: var(--dim); }
 .bar { height: 10px; background: #0b1828; border-radius: 3px; overflow: hidden; width: 120px; display: inline-block; vertical-align: middle; }
@@ -343,7 +343,7 @@ const LEVELS = [
   // ── 5 TILES OR STEPS ──
   {
     name: 'TILES OR STEPS',
-    start() { this.scores = {}; this.setRound('compact'); },
+    start() { this.scores = {}; this.guess = undefined; this.setRound('compact'); },
     setRound(name) {
       this.rn = name;
       const tools = {
@@ -393,10 +393,18 @@ const LEVELS = [
     },
     bites: [
       'Litinski scores a plan with two numbers: <b>tiles</b> (every tile it ever uses) and <b>steps</b>. A real chip pays for every tile in every step, so the score is TILES × STEPS. Lower is better.',
-      { t: 'Job <b>X₂·Z₃</b> needs q2\'s X edge to face a hallway. Two ways: <b>turn</b> q2 (3 steps, no extra tiles), or use <b>wide</b> patches that show both edges on one side (no turn, but twice the tiles). Which will score lower?', ask: ['Turning', 'Wide patches', 'About the same'], answer: 1, kind: 'predict', id: 'turn-or-wide' },
+      { t: 'Job <b>X₂·Z₃</b> needs q2\'s X edge to face a hallway. Two ways: <b>turn</b> q2 (3 steps, no extra tiles), or use <b>wide</b> patches that show both edges on one side (no turn, but twice the tiles). Which will score lower?', ask: ['Turning', 'Wide patches', 'About the same'], answer: 1, kind: 'predict', id: 'turn-or-wide',
+        reveal: false, onAnswer: i => (LEVELS[4].guess = i) },   // judged on the player's own scores in 'Compare'
       { t: 'A compact row: four tiles over a grey <b>lane</b> that is kept free for hallways. Only Z edges face the lane, but job <b>X₂·Z₃</b> needs q2\'s X. Tap q2 and <b>TURN</b> it (3 steps; it borrows a lane tile while it turns), then build the hallway.', wait: 'roundA', hint: 'TURN q2, then hallway, ▶ GO' },
       { t: 'The same job, but now every qubit sits in a <b>wide</b> patch that shows both edges on the lane side. No turning needed.', wait: 'roundB', hint: 'hallway, ▶ GO', onShow: () => LEVELS[4].setRound('wide') },
-      { t: 'Compare.', onShow: () => { const s = LEVELS[4].scores, f = x => `<b>${x.tiles} tiles × ${x.steps} steps = ${x.tiles * x.steps}</b>`; bites.feedback(`Compact: ${f(s.compact)}. Wide: ${f(s.wide)}. Fewer tiles, or fewer steps: that is the trade.`); } },
+      { t: 'Compare.', onShow: () => {
+        const s = LEVELS[4].scores, f = x => `<b>${x.tiles} tiles × ${x.steps} steps = ${x.tiles * x.steps}</b>`;
+        const c = s.compact.tiles * s.compact.steps, w = s.wide.tiles * s.wide.steps, won = c < w ? 0 : w < c ? 1 : 2;
+        const names = ['turning', 'wide patches', 'about the same'], g = LEVELS[4].guess;
+        const said = g === undefined ? '' : g === won ? ` ✓ You predicted ${names[g]}. Right!` : ` ✗ You predicted ${names[g]}; your own plans say ${names[won]}.`;
+        if (g !== undefined) QEC.progress.note(CH, 'turn-or-wide', { kind: 'predict', ok: g === won });   // judged here, see reveal: false
+        bites.feedback(`Compact: ${f(s.compact)}. Wide: ${f(s.wide)}. Fewer tiles, or fewer steps: that is the trade.${said}`);
+      } },
       { t: 'A program that needs only Z edges, say Z₂·Z₃. Which layout is cheaper now?', ask: ['The compact row', 'The wide row', 'Both the same'], answer: 0, kind: 'check', id: 'layout-cheaper',
         reply: (i, ok) => `${ok ? '✓ Right.' : '✗ Not quite: the compact row.'} Compact: 4 tiles + 2 hallway tiles, 1 step = 6. Wide: 8 tiles + 3 hallway tiles, 1 step = 11. Which is cheaper depends on the program. That is why real designs come in several sizes.` },
       { t: 'Now you design. An empty board, four qubits to place, and three jobs: <b>Z₁·Z₂</b>, <b>X₃·X₄</b> and <b>Z₁·Z₂·Z₃·Z₄</b>. They don\'t disturb each other, so any order works. Aim for a low TILES × STEPS.', wait: 'roundC', hint: 'place q1–q4, then do the three jobs', onShow: () => LEVELS[4].setRound('free') },

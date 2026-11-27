@@ -15,6 +15,10 @@
 //       reply: (pick, ok) => 'html' }     // optional; default reply depends on kind
 //   `answer` may be a function pick → bool (e.g. judged against simulated data).
 //   With bites.logAs = 'ch2' the FIRST answer goes to the local learning log (QEC.progress.note).
+//   A prediction is settled once the game has shown the outcome: when the player finishes the next
+//   `wait` bite (or the one named by `reveal: 'evt'`), the next bite opens with "✓ / ✗ you predicted…".
+//   `reveal: false` when the chapter judges the prediction itself (e.g. against random data or the
+//   player's own plan). Then the chapter also writes the learning-log entry once it knows the result.
 //
 // Bite text is HTML written by us (never user input).
 (function (QEC) {
@@ -52,12 +56,11 @@
       const ok = typeof cur.answer === 'function' ? !!cur.answer(i) : i === cur.answer;
       const kind = cur.kind || 'check';
       cur.picked = i;
-      const mark = kind === 'predict' ? 'pick' : ok ? 'pick right' : 'pick wrong';
-      cur.t += `<div class="ask-${mark}">▸ ${cur.ask[i]}</div>`;
-      if (this.logAs && QEC.progress && cur.id) QEC.progress.note(this.logAs, cur.id, { kind, ok });
+      cur.pick = kind === 'predict' ? 'pick' : ok ? 'pick right' : 'pick wrong';
+      if (this.logAs && QEC.progress && cur.id && cur.reveal !== false) QEC.progress.note(this.logAs, cur.id, { kind, ok });
       const right = typeof cur.answer === 'number' ? cur.ask[cur.answer] : null;
       this.fb = cur.reply ? cur.reply(i, ok)
-        : kind === 'predict' ? 'Noted. Let\'s find out.'
+        : kind === 'predict' ? 'Noted. You\'ll soon see whether you were right.'
         : ok ? '✓ Right.' : `✗ Not quite${right ? ` — it is <b>${right}</b>` : ''}.`;
       if (cur.onAnswer) cur.onAnswer(i, ok);
       this.render();
@@ -81,11 +84,34 @@
 
     advance() {
       if (this.i >= this.list.length) return;
+      const left = this.list[this.i];
       this.i++;
       this.fb = null;
+      if (left.wait) this.settlePredictions(left.wait);
       this.render();
       if (this.i >= this.list.length) { if (this.onEnd) this.onEnd(); }
       else this.fireShow();
+    }
+
+    // The game just showed an outcome (a `wait` bite was done). Settle the predictions it answers:
+    // colour the old pick and open the next bite with the verdict, so nobody has to work it out alone.
+    settlePredictions(evt) {
+      const lines = [];
+      for (let k = 0; k < this.i; k++) {
+        const b = this.list[k];
+        if (b.kind !== 'predict' || b.picked === undefined || b.settled || typeof b.answer !== 'number') continue;
+        if (b.reveal === false || (b.reveal && b.reveal !== evt)) continue;
+        b.settled = true;
+        const ok = b.picked === b.answer;
+        b.pick = ok ? 'pick right' : 'pick wrong';
+        lines.push(ok
+          ? `<div class="ask-verdict right">✓ You predicted <em>${b.ask[b.picked]}</em>. Right!</div>`
+          : `<div class="ask-verdict wrong">✗ You predicted <em>${b.ask[b.picked]}</em>. The answer: <b>${b.ask[b.answer]}</b>.</div>`);
+      }
+      if (!lines.length) return;
+      const next = this.list[this.i];
+      if (next) next.verdict = (next.verdict || '') + lines.join('');
+      else this.fb = lines.join('');
     }
 
     fireShow() {
@@ -110,6 +136,12 @@
 
     render() {
       const el = this.el;
+      // Scroll only for something new: a new current bite, or a new reaction while the player is
+      // following along at the bottom. A player who scrolled up to re-read stays where they are.
+      const keep = el.scrollTop, following = el.scrollTop >= el.scrollHeight - el.clientHeight - 24;
+      const newBite = this.i !== this.shownI || this.list !== this.shownList;
+      const newFb = this.fb && this.fb !== this.shownFb;
+      this.shownI = this.i; this.shownList = this.list; this.shownFb = this.fb;
       el.innerHTML = '';
       const h = document.createElement('div');
       h.className = 'bites-title';
@@ -120,7 +152,8 @@
       for (let k = 0; k <= last; k++) {
         const b = document.createElement('div');
         b.className = 'bite' + (k === this.i ? ' current' : '') + (this.list[k].fb ? ' feedback' : '');
-        b.innerHTML = this.list[k].t;
+        const it = this.list[k];
+        b.innerHTML = (it.verdict || '') + it.t + (it.pick ? `<div class="ask-${it.pick}">▸ ${it.ask[it.picked]}</div>` : '');
         el.appendChild(b);
       }
 
@@ -133,7 +166,22 @@
 
       const cur = this.list[this.i];
       if (cur) this.renderActions(cur);
+      if (newBite) this.scrollToCurrent('first');
+      else if (newFb && following) this.scrollToCurrent('last');
+      else el.scrollTop = keep;
       if (this.onChange) this.onChange();
+    }
+
+    // When the briefing scrolls inside its box (wide screens, see theme.css), show the current
+    // bite ('first') or the newest reaction ('last') and the buttons below. If they don't fit
+    // together, the start of that text wins.
+    scrollToCurrent(which) {
+      const el = this.el;
+      if (el.scrollHeight <= el.clientHeight) return;
+      const cur = el.querySelectorAll('.bite.current');
+      const target = cur.length ? cur[which === 'last' ? cur.length - 1 : 0] : el.lastElementChild;
+      const top = target.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 8;
+      el.scrollTop = Math.min(top, el.scrollHeight - el.clientHeight);
     }
 
     renderActions(cur) {

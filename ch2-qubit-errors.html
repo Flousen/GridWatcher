@@ -246,6 +246,7 @@ function measure() {
     // Let the arrow finish snapping and the result be read before the next bite resets the arrow.
     const s = S;
     S.settling = true;
+    $('status').textContent += ' Next question in a moment…';   // says why PREPARE is greyed out
     setTimeout(() => { if (S !== s) return; S.settling = false; bites.notify('measure3'); updateUI(); }, 1800);
   }
   updateUI();

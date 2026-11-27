@@ -118,7 +118,7 @@ const LEVELS = [
       'The square you built. The <span class="z">orange half-discs</span> each ask their column and catch <span class="x">X</span>.',
       'The <span class="x">cyan tile</span> asks all <b>four</b> qubits at once. It lights up when an <em>odd</em> number of them got phase-flipped, but it does not say which ones.',
       { t: 'Before you play: can this square fix any single glitch, the way three qubits in a row could fix one?',
-        ask: ['Yes, any single glitch', 'It notices every one, but cannot always fix it', 'Some glitches slip through unseen'], answer: 1, kind: 'predict', id: 'square-fix' },
+        ask: ['Yes, any single glitch', 'It notices every one, but cannot always fix it', 'Some glitches slip through unseen'], answer: 1, kind: 'predict', id: 'square-fix', reveal: 'checked' },
       { t: 'Let a glitch hit: <span class="x">X</span> or <span class="z">Z</span>, on one qubit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'Fix it: <b>left-click</b> = <span class="x">X</span>, <b>right-click</b> = <span class="z">Z</span>. On touch, tap to step Z → X → Y, then wait a moment. Then CHECK.', wait: 'checked', hint: 'fix it, then CHECK' },
       'A lit orange checker points at <b>two</b> qubits, the cyan tile at <b>four</b>, and nothing on the board says which one glitched. Play 4 rounds in all.',

@@ -40,8 +40,6 @@ details.table summary { cursor: pointer; letter-spacing: 2px; }
 details.table table { border-collapse: collapse; margin-top: 6px; width: 100%; }
 details.table td, details.table th { padding: 3px 8px; text-align: right; border-bottom: 1px solid #1a2a3a; color: var(--chart-ink); }
 #guess-row { display: none; }
-.bites { flex-basis: 270px; }
-@media (max-width: 860px) { .bites { flex-basis: auto; } }
 </style>
 </head>
 <body>
@@ -142,19 +140,34 @@ const rateList = (p, bare) => {
   return DISTANCES.map(d => `d=${d} ${fmtPct(data[d][i])}`).join(', ') + (bare ? `, bare ${fmtPct(p)}` : '');
 };
 
+// The bets compare the three patches only, so the bare qubit must not win here
+// (its index 3 would also collide with the bet "All about the same").
+function patchBest(p) {
+  const i = at(p), rates = DISTANCES.map(d => data[d][i]), min = Math.min(...rates);
+  return { min, best: DISTANCES.map((d, k) => k).filter(k => rates[k] === min) };
+}
+// "All about the same" is right only when all three patches tie.
+const betRight = (p, bet) => (bet === 3 ? patchBest(p).best.length === DISTANCES.length : patchBest(p).best.includes(bet));
+
 function betVerdict() {
   if (!haveData()) return 'Run the sweep first.';
   const line = (p, bet) => {
-    // The bets compare the three patches only, so the bare qubit must not win here
-    // (its index 3 would also collide with the bet "All about the same").
-    const i = at(p), rates = DISTANCES.map(d => data[d][i]), min = Math.min(...rates);
-    const best = DISTANCES.map((d, k) => k).filter(k => rates[k] === min);
+    const { min, best } = patchBest(p);
     const name = best.map(k => `d=${DISTANCES[k]}`).join(' and ');
     const bare = min > p ? ` All three fail more often than a bare qubit (${fmtPct(p)}).` : '';
-    const said = bet === null ? '' : best.includes(bet) ? ' Your bet was right.' : bet === 3 ? ' You bet they would be about the same.' : ` You bet d=${DISTANCES[bet]}.`;
+    const said = bet === null ? '' : betRight(p, bet) ? ' ✓ Your bet was right.'
+      : bet === 3 ? ' ✗ You bet they would be about the same.' : ` ✗ You bet d=${DISTANCES[bet]}.`;
     return `At <b>${Math.round(p * 100)}%</b>, ${name} failed least (${rateList(p)}).${bare}${said}`;
   };
   return line(0.03, bets.low) + '<br>' + line(0.18, bets.high);
+}
+
+// The bets are judged against this run's data, so their learning-log entry is written here,
+// not when they were placed (their bites have reveal: false).
+function noteBets() {
+  if (!haveData()) return;
+  if (bets.low !== null) QEC.progress.note('ch5', 'bet-low', { kind: 'predict', ok: betRight(0.03, bets.low) });
+  if (bets.high !== null) QEC.progress.note('ch5', 'bet-high', { kind: 'predict', ok: betRight(0.18, bets.high) });
 }
 
 function advice(p, ok) {
@@ -184,12 +197,12 @@ const LEVELS = [
     bites: [
       'One shot is luck. To compare codes we roll <b>thousands</b> per setting and count how often the decoder is fooled: the <b>logical error rate</b>. That is the number a chip designer actually cares about.',
       { t: 'Before you run it, place two bets. At a <b>low</b> glitch rate, p = 3%, which patch fails least often?',
-        ask: BETS, answer: 2, kind: 'predict', id: 'bet-low', onAnswer: i => (bets.low = i) },
+        ask: BETS, answer: 2, kind: 'predict', id: 'bet-low', reveal: false, onAnswer: i => (bets.low = i) },
       { t: 'And at a <b>high</b> glitch rate, p = 18%?',
-        ask: BETS, answer: 0, kind: 'predict', id: 'bet-high', onAnswer: i => (bets.high = i) },
+        ask: BETS, answer: 0, kind: 'predict', id: 'bet-high', reveal: false, onAnswer: i => (bets.high = i) },
       { t: 'Run the sweep: patches of distance 3, 5 and 7, glitch rates from 1% to 20%.', wait: 'sweep', hint: 'press ▶ RUN SWEEP' },
       'The dashed line is a single unprotected qubit: it fails exactly at rate p. Below it, encoding helps.',
-      { t: 'Now check your bets against the curves. Hover (or open the data table) for exact numbers.', onShow: () => bites.feedback(betVerdict()) },
+      { t: 'Now check your bets against the curves. Hover (or open the data table) for exact numbers.', onShow: () => { bites.feedback(betVerdict()); noteBets(); } },
       'There is the answer to the chapter\'s question, and it is a <b>conditional yes</b>: at low p bigger patches are <em>much</em> better, at high p they are <em>worse</em>. More qubits help only if your hardware is already good enough. The curves even tell you where the line sits.',
     ],
   },
@@ -296,6 +309,7 @@ function crossing() {
 }
 
 function lockIn() {
+  if (!bites.open) return;   // the button is disabled then, see updateUI
   if (!haveData()) { setStatus('Wait for the sweep to finish.', 'warn'); return; }
   const g = Number($('guess').value) / 1000, x = crossing();
   if (x === null) { setStatus('No clear crossing in this run — press RUN SWEEP again.', 'warn'); return; }
@@ -322,6 +336,7 @@ function updateUI() {
   document.querySelectorAll('.dbtn').forEach(b => b.classList.toggle('active', Number(b.dataset.d) === dist));
   $('btn-sweep').disabled = sweeping || !bites.open;
   $('btn-roll').disabled = !bites.open;
+  $('guess').disabled = $('btn-lock').disabled = !bites.open;   // locked while the briefing asks
   drawChart();
 }
 bites.onChange = updateUI;
@@ -332,17 +347,46 @@ $('btn-lock').onclick = lockIn;
 $('p').oninput = updateUI;
 $('guess').oninput = updateUI;
 
-// The marker can also be dragged on the chart itself (mouse or touch); it moves the same slider.
-// Listeners sit on the <svg>, which survives every redraw, so a drag is never cut off.
+// The marker can also be moved on the chart itself; it sets the same slider.
+// Mouse: press and drag. Touch: tap, or drag clearly sideways. A vertical swipe still scrolls
+// the page and leaves the marker where it was. Listeners sit on the <svg>, which survives
+// every redraw, so a drag is never cut off.
 const guessOn = () => $('guess-row').style.display === 'flex';
+const guessLive = () => guessOn() && bites.open;
+// pointer x in viewBox units (the chart's border and scaling taken care of)
+const chartX = e => new DOMPoint(e.clientX, e.clientY).matrixTransform($('chart').getScreenCTM().inverse()).x;
 function dragGuess(e) {
-  const r = $('chart').getBoundingClientRect();
-  const p = ((e.clientX - r.left) * (CH.w / r.width) - CH.l) / (CH.w - CH.l - CH.r) * CH.xmax;
+  const p = (chartX(e) - CH.l) / (CH.w - CH.l - CH.r) * CH.xmax;
   $('guess').value = Math.max(10, Math.min(200, Math.round(p * 1000)));
   updateUI();
 }
-$('chart').addEventListener('pointerdown', e => { if (!guessOn()) return; $('chart').setPointerCapture(e.pointerId); dragGuess(e); });
-$('chart').addEventListener('pointermove', e => { if (guessOn() && $('chart').hasPointerCapture(e.pointerId)) dragGuess(e); });
+let touch = null;   // a touch that has not yet shown whether it is a drag or a scroll
+$('chart').addEventListener('pointerdown', e => {
+  if (!guessOn()) return;
+  if (!bites.open) { setStatus('Answer the question in the briefing first.', 'warn'); return; }
+  if (e.pointerType === 'mouse') {
+    if (e.button !== 0) return;
+    e.preventDefault();                  // no text selection while dragging
+    $('tip').style.display = 'none';     // the hover tooltip would freeze during the drag
+    $('chart').setPointerCapture(e.pointerId);
+    dragGuess(e);
+  } else touch = { id: e.pointerId, x: e.clientX, y: e.clientY, dragging: false };
+});
+$('chart').addEventListener('pointermove', e => {
+  if (!guessLive()) return;
+  if (touch && touch.id === e.pointerId && !touch.dragging) {
+    const dx = Math.abs(e.clientX - touch.x), dy = Math.abs(e.clientY - touch.y);
+    if (dx > 8 && dx > dy) { touch.dragging = true; $('chart').setPointerCapture(e.pointerId); }
+  }
+  if ($('chart').hasPointerCapture(e.pointerId)) dragGuess(e);
+});
+$('chart').addEventListener('pointerup', e => {
+  const tap = touch && touch.id === e.pointerId && !touch.dragging
+    && Math.hypot(e.clientX - touch.x, e.clientY - touch.y) < 10;
+  touch = null;
+  if (tap && guessLive()) dragGuess(e);
+});
+$('chart').addEventListener('pointercancel', () => { touch = null; });   // the browser took it as a scroll
 document.querySelectorAll('.dbtn').forEach(b => (b.onclick = () => { dist = Number(b.dataset.d); last = null; updateUI(); }));
 
 // ── One-shot canvas ────────────────────────────────────────────────────────
@@ -412,7 +456,7 @@ function drawChart() {
   svg.appendChild(el('polyline', { points: diag.join(' '), fill: 'none', stroke: 'var(--chart-muted)', 'stroke-width': 1.5, 'stroke-dasharray': '5 5' }));
 
   // threshold guess marker, with a handle on top that says "drag me"
-  svg.style.cursor = guessOn() ? 'ew-resize' : '';
+  svg.style.cursor = guessLive() ? 'ew-resize' : '';
   svg.style.touchAction = guessOn() ? 'pan-y' : '';   // sideways drags move the marker, the page still scrolls
   if (guessOn()) {
     const g = Number($('guess').value) / 1000;
@@ -449,8 +493,7 @@ function drawChart() {
 function onHover(e) {
   if (!haveData()) return;
   const svg = $('chart'), r = svg.getBoundingClientRect();
-  const x = (e.clientX - r.left) * (CH.w / r.width);
-  const p = (x - CH.l) / (CH.w - CH.l - CH.r) * CH.xmax;
+  const p = (chartX(e) - CH.l) / (CH.w - CH.l - CH.r) * CH.xmax;
   const i = Math.max(0, Math.min(P_GRID.length - 1, Math.round(p * 100) - 1));
   let c = $('cross');
   if (!c) { c = el('line', { id: 'cross', stroke: 'var(--chart-muted)', 'stroke-width': 1, y1: CH.t, y2: CH.h - CH.b, 'pointer-events': 'none' }); svg.insertBefore(c, svg.lastChild); }

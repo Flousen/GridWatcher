@@ -5,8 +5,8 @@
   --panel:    rgba(0, 204, 255, 0.03);
   --line:     rgba(0, 204, 255, 0.14);
   --text:     #d5dfe9;
-  --dim:      #93a7bb;
-  --faint:    #6b7f94;
+  --dim:      #aabbcc;
+  --faint:    #7d91a6;
   --cyan:     #00eeff;
   --cyan-dk:  #0099bb;
   --purple:   #cc44ff;
@@ -17,7 +17,10 @@
   --x-col:    #00ccff;   /* X: bit flips, X-checks */
   --z-col:    #ff8822;   /* Z: phase flips, Z-checks */
   --y-col:    #cc88ff;   /* Y: both */
-  --mono:     'Courier New', monospace;
+  --mono:     'Courier New', monospace;   /* the neon look: titles, chips, buttons, HUD */
+  /* Reading text (briefing, status, legends, answers) uses the system's own sans-serif:
+     Courier's thin strokes are hard to read at small sizes on a dark background. */
+  --read:     system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue', Arial, sans-serif;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -38,7 +41,7 @@ a { color: var(--cyan); }
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto 14px;
 }
 .back {
@@ -78,12 +81,25 @@ h1 {
 .stage {
   display: flex;
   gap: 18px;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   align-items: flex-start;
 }
 .board { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
-.bites { flex: 0 0 320px; }
+.bites { flex: 0 0 clamp(320px, 34vw, 420px); }   /* wider briefing on wide screens: shorter, fewer lines */
+/* Wide screens: the briefing never grows past the window. It scrolls inside (bites.js keeps the
+   current bite in view) and sticks to the top, so the board and the current bite stay on screen. */
+@media (min-width: 861px) {
+  .bites {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #334455 transparent;
+  }
+}
 @media (max-width: 860px) {
   .stage { flex-direction: column; }
   .bites { flex: none; width: 100%; order: -1; }   /* read first, then play right below */
@@ -108,7 +124,7 @@ canvas {
   border-radius: 5px;
   padding: 5px 12px;
   font-size: 0.76em;
-  color: #66aacc;
+  color: #86c4de;
   letter-spacing: 1px;
 }
 .chip b { color: var(--cyan); }
@@ -127,10 +143,10 @@ button.btn {
   transition: all 0.18s;
   text-transform: uppercase;
   background: rgba(255, 255, 255, 0.04);
-  color: #8899aa;
-  border: 1px solid #334455;
+  color: #a6b6c6;
+  border: 1px solid #3d5266;
 }
-button.btn:hover:not(:disabled) { color: #ccddee; background: rgba(255, 255, 255, 0.08); }
+button.btn:hover:not(:disabled) { color: #ddeeff; background: rgba(255, 255, 255, 0.08); }
 button.btn:disabled { opacity: 0.35; cursor: not-allowed; }
 button.btn.go     { background: #006633; color: var(--green); border-color: #009944; }
 button.btn.go:hover:not(:disabled) { background: #008844; box-shadow: 0 0 18px #00ff8866; }
@@ -145,9 +161,10 @@ button.btn.active { box-shadow: 0 0 14px currentColor; background: rgba(255, 255
 .status {
   margin-top: 10px;
   min-height: 22px;
-  font-size: 0.85em;
+  font-family: var(--read);
+  font-size: 0.95em;
+  line-height: 1.45;
   text-align: center;
-  letter-spacing: 1px;
   max-width: 700px;
 }
 .status.info    { color: #22ccee; }
@@ -164,15 +181,16 @@ button.btn.active { box-shadow: 0 0 14px currentColor; background: rgba(255, 255
 }
 .bites-title { color: #2ab6d8; font-size: 0.7em; letter-spacing: 3px; margin-bottom: 10px; }
 .bite {
-  font-size: 0.86em;
+  font-family: var(--read);
+  font-size: 0.95em;
   line-height: 1.6;
-  color: #8fa1b3;
+  color: #b3c1cf;   /* read bites: dimmer than the current one, still easy to read */
   padding: 8px 10px;
   border-left: 2px solid transparent;
   margin-bottom: 4px;
 }
 .bite.current {
-  color: #dde6ee;
+  color: #eef3f8;
   border-left-color: var(--cyan);
   background: rgba(0, 238, 255, 0.05);
   animation: biteIn 0.3s ease;
@@ -183,23 +201,29 @@ button.btn.active { box-shadow: 0 0 14px currentColor; background: rgba(255, 255
 .bite .z { color: var(--z-col); font-weight: bold; }
 .bite .y { color: var(--y-col); font-weight: bold; }
 .bite-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.bite-wait { color: var(--amber); font-size: 0.78em; letter-spacing: 1px; }
+.bite-wait { color: var(--amber); font-family: var(--read); font-size: 0.85em; }
 /* Question bites: one full-width button per answer, then the pick stays visible in the bite */
 .bite-actions.ask { flex-direction: column; align-items: stretch; gap: 6px; }
 button.btn.ask-opt {
+  font-family: var(--read);
+  font-size: 0.9em;
   text-transform: none;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   font-weight: normal;
   text-align: left;
   white-space: normal;
   line-height: 1.4;
-  color: #c8d4e0;
-  border-color: #3d5266;
+  color: #dde6ee;
+  border-color: #4a6178;
 }
 button.btn.ask-opt:hover { border-color: var(--cyan-dk); }
 .ask-pick { margin-top: 6px; color: var(--amber); }
 .ask-pick.right { color: var(--green); }
 .ask-pick.wrong { color: var(--red); }
+/* a prediction settled after the outcome (bites.js settlePredictions) */
+.ask-verdict { margin-bottom: 6px; }
+.ask-verdict.right { color: var(--green); }
+.ask-verdict.wrong { color: var(--amber); }
 /* Feedback flashes on the board (QEC.ui.fx in js/ui/canvas.js) */
 @keyframes fxGood {
   0%   { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
@@ -236,6 +260,6 @@ button.btn.ask-opt:hover { border-color: var(--cyan-dk); }
   to   { opacity: 1; transform: none; }
 }
 
-.legend { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 10px; font-size: 0.72em; color: var(--dim); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 10px; font-family: var(--read); font-size: 0.82em; color: var(--dim); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
