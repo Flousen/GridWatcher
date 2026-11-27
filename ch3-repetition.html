@@ -76,7 +76,7 @@ const pairs = n => {
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) out.push([i, j]);
   return out;
 };
-const bagQ3 = rng.bagInt(3), bagQ3z = rng.bagInt(3), bagPair3 = rng.bag(pairs(3)), bagCount = rng.bag([1, 2]), bagBurst = rng.bag([1, 2, 3]);
+const bagQ3 = rng.bagInt(3), bagQ3z = rng.bagInt(3), bagPair3 = rng.bag(pairs(3)), bagCount = rng.bag([1, 2]);
 const LEVELS = [
   {
     name: '3 QUBITS', n: 3, goal: 3,
@@ -87,7 +87,7 @@ const LEVELS = [
       { t: 'A hidden <span class="x">X</span> glitch is about to hit one qubit. You won\'t see which.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'Look at the lit checkers. Which qubit is the odd one out? Click it to apply <span class="x">X</span>.', wait: 'flip', hint: 'click a qubit' },
       { t: 'Clicking again undoes your X. When every checker is dark, press CHECK to reveal the truth.', wait: 'solved', hint: 'turn all checkers dark, then CHECK' },
-      'Each glitch lit a <em>different</em> pattern of checkers — the syndrome from Chapter 1, now for qubits. Solve 3 rounds.',
+      'Each glitch lit a <em>different</em> pattern of checkers — the syndrome from Chapter 1, now for qubits. That was round 1 of 3. Solve 2 more.',
     ],
   },
   {
@@ -112,7 +112,7 @@ const LEVELS = [
     errors: (n, k) => xOn(n, rng.sample(n, k)),
     bites: [
       'You\'re the engineer now. Each round a burst of <b>1, 2 or 3</b> glitches hits, and you are told how many. Bigger codes cost more qubits.',
-      'So pick the <b>smallest</b> code that is <em>sure</em> to survive the burst. The fewest-flips rule decodes for you this time; your job is the plan. Get 3 rounds right.',
+      'So pick the <b>smallest</b> code that is <em>sure</em> to survive the burst. The fewest-flips rule decodes for you this time; your job is the plan. Get each size right once: 1, 2 and 3 glitches.',
     ],
   },
   {
@@ -132,7 +132,7 @@ const ripples = [];
 
 function startLevel(i) {
   const lv = LEVELS[i];
-  S = { lv, idx: i, solved: 0, played: 0 };
+  S = { lv, idx: i, solved: 0, played: 0, rightK: new Set() };
   setSize(lv.n);
   newRound();
   bites.play(lv.bites, () => { if (S.goalReached) levelDone(); else updateUI(); });
@@ -152,7 +152,11 @@ function newRound() {
   S.result = null;
   S.retried = false;
   if (S.lv.pick) {
-    S.k = bagBurst();
+    // Each burst size must be answered right once, so only sizes still open come up.
+    // After a miss, another open size goes first and the missed one returns later.
+    const left = [1, 2, 3].filter(k => !S.rightK.has(k));
+    const open = left.length ? left : [1, 2, 3];   // all done: the level is about to close
+    S.k = rng.pick(open.length > 1 ? open.filter(k => k !== S.k) : open);
     setStatus(`Incoming: a burst of ${S.k} glitch${S.k > 1 ? 'es' : ''}. Pick a code.`, 'warn');
   } else setStatus('All quiet. Press ⚡ GLITCH to start the round.', 'info');
   updateUI();
@@ -175,6 +179,7 @@ function pickSize(n) {
     QEC.progress.note('ch3', `pick-${S.k}`, { kind: 'task', ok: right });
     const fixes = `${n} qubits fix any ${t} glitch${t > 1 ? 'es' : ''}`;
     if (right) {
+      S.rightK.add(S.k);
       S.solved++;
       QEC.ui.fx.good(cv);
       setStatus(`✓ Right size: ${fixes} — and not one qubit more.`, 'success');

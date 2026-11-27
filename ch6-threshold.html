@@ -145,9 +145,14 @@ const rateList = (p, bare) => {
 function betVerdict() {
   if (!haveData()) return 'Run the sweep first.';
   const line = (p, bet) => {
-    const best = bestAt(p).filter(k => k < 3), name = best.map(k => `d=${DISTANCES[k]}`).join(' and ');
-    const said = bet === null ? '' : best.includes(bet) ? ' Your bet was right.' : ` You bet ${BETS[bet].split(' (')[0].toLowerCase()}.`;
-    return `At <b>${Math.round(p * 100)}%</b>, ${name} failed least (${rateList(p)}).${said}`;
+    // The bets compare the three patches only, so the bare qubit must not win here
+    // (its index 3 would also collide with the bet "All about the same").
+    const i = at(p), rates = DISTANCES.map(d => data[d][i]), min = Math.min(...rates);
+    const best = DISTANCES.map((d, k) => k).filter(k => rates[k] === min);
+    const name = best.map(k => `d=${DISTANCES[k]}`).join(' and ');
+    const bare = min > p ? ` All three fail more often than a bare qubit (${fmtPct(p)}).` : '';
+    const said = bet === null ? '' : best.includes(bet) ? ' Your bet was right.' : bet === 3 ? ' You bet they would be about the same.' : ` You bet d=${DISTANCES[bet]}.`;
+    return `At <b>${Math.round(p * 100)}%</b>, ${name} failed least (${rateList(p)}).${bare}${said}`;
   };
   return line(0.03, bets.low) + '<br>' + line(0.18, bets.high);
 }
@@ -192,7 +197,7 @@ const LEVELS = [
     name: 'THRESHOLD', panel: 'chart',
     bites: [
       'That line is where the curves cross, and it has a name: the <b>threshold</b>. Below it, every extra ring of qubits suppresses errors further. Above it, more qubits just means more things to go wrong.',
-      { t: 'Slide the yellow marker to where the curves cross, then LOCK IN.', wait: 'guess', hint: 'set the marker, press LOCK IN', onShow: () => { $('guess-row').style.display = 'flex'; drawChart(); } },
+      { t: 'Drag the yellow marker on the chart, or use the slider below it, to where the curves cross. Then LOCK IN.', wait: 'guess', hint: 'drag the marker, press LOCK IN', onShow: () => { $('guess-row').style.display = 'flex'; drawChart(); } },
       { t: 'Now put it to use. Lab A\'s qubits glitch at <b>p = 4%</b>. What protects their stored bit best?',
         ask: ADVICE, answer: i => bestAt(0.04).includes(i), kind: 'check', id: 'advise-4', reply: (i, ok) => advice(0.04, ok) },
       { t: 'Lab B\'s qubits glitch at <b>p = 15%</b>. What protects their bit best?',
@@ -326,6 +331,18 @@ $('btn-sweep').onclick = () => { if (bites.open) sweep(); };
 $('btn-lock').onclick = lockIn;
 $('p').oninput = updateUI;
 $('guess').oninput = updateUI;
+
+// The marker can also be dragged on the chart itself (mouse or touch); it moves the same slider.
+// Listeners sit on the <svg>, which survives every redraw, so a drag is never cut off.
+const guessOn = () => $('guess-row').style.display === 'flex';
+function dragGuess(e) {
+  const r = $('chart').getBoundingClientRect();
+  const p = ((e.clientX - r.left) * (CH.w / r.width) - CH.l) / (CH.w - CH.l - CH.r) * CH.xmax;
+  $('guess').value = Math.max(10, Math.min(200, Math.round(p * 1000)));
+  updateUI();
+}
+$('chart').addEventListener('pointerdown', e => { if (!guessOn()) return; $('chart').setPointerCapture(e.pointerId); dragGuess(e); });
+$('chart').addEventListener('pointermove', e => { if (guessOn() && $('chart').hasPointerCapture(e.pointerId)) dragGuess(e); });
 document.querySelectorAll('.dbtn').forEach(b => (b.onclick = () => { dist = Number(b.dataset.d); last = null; updateUI(); }));
 
 // ── One-shot canvas ────────────────────────────────────────────────────────
@@ -394,10 +411,13 @@ function drawChart() {
   for (let p = 0.001; p <= 0.2001; p += 0.0025) diag.push(`${sx(p)},${sy(p)}`);
   svg.appendChild(el('polyline', { points: diag.join(' '), fill: 'none', stroke: 'var(--chart-muted)', 'stroke-width': 1.5, 'stroke-dasharray': '5 5' }));
 
-  // threshold guess marker
-  if ($('guess-row').style.display === 'flex') {
+  // threshold guess marker, with a handle on top that says "drag me"
+  svg.style.cursor = guessOn() ? 'ew-resize' : '';
+  svg.style.touchAction = guessOn() ? 'pan-y' : '';   // sideways drags move the marker, the page still scrolls
+  if (guessOn()) {
     const g = Number($('guess').value) / 1000;
     svg.appendChild(el('line', { x1: sx(g), x2: sx(g), y1: CH.t, y2: CH.h - CH.b, stroke: '#ffee00', 'stroke-width': 2, 'stroke-dasharray': '6 4' }));
+    svg.appendChild(el('path', { d: `M${sx(g) - 7},${CH.t - 2} h14 l-7,9 z`, fill: '#ffee00' }));
   }
 
   // series: 2px lines, 8px markers with a surface ring. A rate of 0 has no place on a log axis

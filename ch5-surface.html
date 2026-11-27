@@ -89,7 +89,7 @@ const LEVELS = [
       'The <span class="z">orange tiles</span> are the <b>Z-checks</b>: Chapter 3\'s checkers, now asking two or four qubits. They catch <span class="x">X</span> flips. Warm-up: <b>left-click</b> a qubit to apply <span class="x">X</span>.',
       { t: 'Let an <span class="x">X</span> glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'Find a qubit that touches <em>every</em> lit tile and <em>no</em> dark one. If two of them fit, either is correct — pick one, then CHECK.', wait: 'solved', hint: 'fix it, then CHECK' },
-      'Solve 3 rounds. Stuck? <b>? HINT</b> shows what a decoder would do.',
+      'That was round 1 of 3. Solve 2 more. Stuck? <b>? HINT</b> shows what a decoder would do.',
     ],
   },
   {
@@ -232,17 +232,16 @@ function decoderAlsoFails() {
 
 function logicalFeedback() {
   const { flip, add } = logicalChain();
-  const head = `The stored qubit took ${flip}. Glitch + fix join into a chain running right across the patch, `
-    + 'and no check can see such a chain — that is why every tile went dark.';
+  const sneaky = `Glitch + fix together flip the stored qubit (${flip}), and no check can see that. That is why every tile went dark.`;
   if (decoderAlsoFails()) {
-    return `${head} Nothing on the board could have told you: these tiles have a <b>second</b> reading, `
-      + 'and a minimum-weight decoder — the best there is — bets the same way you did and loses this round too. '
-      + `Want the other reading? <b>↺ TRY AGAIN</b> and add ${add} on top of your fix. `
-      + 'Or <b>SHOW ANSWER</b> to see where the glitches really were.';
+    return 'Two glitches are more than this patch promises to fix. These lit tiles also fit <b>another</b> set of glitches, '
+      + 'one that needs no more flips. The best bet picks that one, so you and the best decoder both fix the wrong qubits. '
+      + `${sneaky} <b>Bad luck, not a mistake${S.lv.matchDecoder ? ': this round counts' : ''}.</b> `
+      + `<b>↺ TRY AGAIN</b> and add ${add} to see the other answer, or <b>SHOW ANSWER</b>.`;
   }
-  return `${head} This one was readable, though: a lighter fix exists that leaves the stored qubit alone. `
-    + (S.lv.matchDecoder ? 'The decoder would have won this round, so it doesn\'t count. ' : '')
-    + '<b>↺ TRY AGAIN</b>, then <b>? HINT</b> shows which qubits a minimum-weight decoder flips.';
+  return `${sneaky} Here a fix with <b>fewer flips</b> existed, and fewer flips is the better bet. `
+    + (S.lv.matchDecoder ? 'The decoder would have found it, so this round doesn\'t count. ' : '')
+    + '<b>↺ TRY AGAIN</b>, then <b>? HINT</b> shows the decoder\'s fix.';
 }
 
 function check() {
@@ -260,8 +259,10 @@ function check() {
     QEC.ui.fx.good(cv);
     bites.notify('solved');
     S.solved++;
-    if (S.retried) bites.feedback('Second try worked. A real decoder gets only <b>one</b> guess per round — it has to pick the most likely fix straight away.'
-      + (S.lv.matchDecoder && !S.firstMatch ? ' So this round doesn\'t count.' : ''));
+    if (S.retried) bites.feedback(S.lv.matchDecoder && S.firstMatch
+      ? 'Second try worked. This round counts anyway: the best decoder would have lost it too.'
+      : 'Second try worked. A real decoder gets only <b>one</b> guess per round, so it has to pick the most likely fix straight away.'
+        + (S.lv.matchDecoder ? ' So this round doesn\'t count.' : ''));
     if (P.equal(S.err, S.corr)) setStatus(`✓ Fixed — exactly the glitched qubit${P.weight(S.err) > 1 ? 's' : ''}.`, 'success');
     else {
       setStatus('✓ Fixed — with a different fix than the glitch! Still perfect.', 'success');

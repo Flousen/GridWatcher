@@ -99,7 +99,7 @@ const LEVELS = [
     name: 'MYSTERY', goal: 4, clean: true, targets: [30, 60, 120, 150, 210, 240, 300, 330], errors: ['X', 'Z', 'Y'],
     bites: [
       'Now the arrow sits at an odd angle and the glitch can be anything: <span class="x">X</span>, <span class="z">Z</span>, or <span class="y">Y</span> — which is X and Z at once.',
-      'Compare the red arrow with the dashed one. Flipped top↔bottom? Left↔right? Both?',
+      'When a glitch hits, the arrow turns red and jumps. A dashed arrow stays behind and shows where it should point. Compare the two: flipped top↔bottom? Left↔right? Both?',
       'Every error is one of these three (or a mix you can build from them). Here only <b>clean fixes</b> count: the right gate on the first try. Read the arrow, then press. Fix 4 cleanly.',
     ],
   },
@@ -166,6 +166,7 @@ function setupDemo(deg) {
 }
 
 function setupMeasure(deg) {
+  anim = null;   // a new arrow replaces any snap still in flight
   S.target = fromAngle(deg);
   S.v = { ...S.target };
   S.phase = 'measure';
@@ -241,12 +242,17 @@ function measure() {
   setStatus(sure ? `Measured: ${got}, with certainty. The arrow was already at |${got}⟩ and stays put.`
     : `Measured: ${got}. (P(0) was ${Math.round(p0 * 100)}%.) The arrow snapped to |${got}⟩.`, got ? 'warn' : 'info');
   bites.notify('measure');
-  if (measureCount >= 4) bites.notify('measure3');
+  if (measureCount >= 4 && bites.waiting === 'measure3') {
+    // Let the arrow finish snapping and the result be read before the next bite resets the arrow.
+    const s = S;
+    S.settling = true;
+    setTimeout(() => { if (S !== s) return; S.settling = false; bites.notify('measure3'); updateUI(); }, 1800);
+  }
   updateUI();
 }
 
 function prepare() {
-  if (S.phase !== 'measured' || bites.waiting === 'restore' || !canAct()) return;
+  if (S.phase !== 'measured' || bites.waiting === 'restore' || S.settling || !canAct()) return;
   S.v = { ...S.target };
   S.phase = 'measure';
   setStatus('Prepared the same arrow again.', 'info');
@@ -293,7 +299,7 @@ function updateUI() {
   $('btn-measure').style.display = meas ? '' : 'none';
   $('btn-prepare').style.display = meas ? '' : 'none';
   $('btn-measure').disabled = S.phase !== 'measure' || restoring || !act;
-  $('btn-prepare').disabled = S.phase !== 'measured' || restoring || !act;
+  $('btn-prepare').disabled = S.phase !== 'measured' || restoring || S.settling || !act;
 }
 
 $('btn-glitch').onclick = glitch;

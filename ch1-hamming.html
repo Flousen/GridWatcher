@@ -1047,7 +1047,11 @@ function locateClick(p) {
     L.missed = true;
     L.wrong = hn.id;
     const pat = QEC.hamming.alarmPattern(S.conns, hn.id).triggered;
-    setStatus(`✗ Node ${hn.label} would ring ${sensorList(pat)}. That's not what rang.`, 'error');
+    // Name both patterns: "would ring S1" reads as right when S1 did ring, so say "only S1"
+    // and show what actually rang next to it.
+    const would = pat.length ? `only ${sensorList(pat)}` : 'no sensor at all';
+    const rang = fired.length ? `${sensorList(fired)} rang` : 'no sensor rang';
+    setStatus(`✗ Node ${hn.label} would ring ${would}, but ${rang}.`, 'error');
     bites.feedback('Look for the node wired to <b>every</b> ringing sensor and to <b>no</b> silent one.');
     QEC.ui.fx.nudge(el('gc'));
     return;
