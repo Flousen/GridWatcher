@@ -99,20 +99,25 @@ const LEVELS = [
     ],
   },
   {
-    name: 'TOO MANY', n: 3, goal: 2, countAll: true,
+    // Two glitches per round, not announced: real checkers never say how many hit.
+    // The feedback names the count once the round is over.
+    name: 'TOO MANY', n: 3, goal: 2, countAll: true, twoHit: true,
     errors: (n) => xOn(n, bagPair3()),
     bites: [
-      'Back to three qubits. But this time <b>two</b> glitches hit at once.',
+      'Back to three qubits, and the same job as before.',
       'Do what the checkers suggest, then CHECK. Play 2 rounds.',
     ],
   },
   {
     // The distance limit as a decision: the player plans the code, the fewest-flips rule decodes.
+    // The count is a design spec ("up to k"), not something the decoder knows. The round then
+    // tests the worst case, exactly k glitches, so the right size for "up to k" and for
+    // "exactly k" is the same: 2k + 1 qubits.
     name: 'PICK A SIZE', n: 3, goal: 3, pick: true,
     errors: (n, k) => xOn(n, rng.sample(n, k)),
     bites: [
-      'You\'re the engineer now. Each round a burst of <b>1, 2 or 3</b> glitches hits, and you are told how many. Bigger codes cost more qubits.',
-      'So pick the <b>smallest</b> code that is <em>sure</em> to survive the burst. The fewest-flips rule decodes for you this time; your job is the plan. Get each size right once: 1, 2 and 3 glitches.',
+      'You\'re the engineer now. Real hardware never tells you how many glitches hit. But you know your hardware, so you design for the worst burst you expect: your <b>spec</b>. Each round has a spec of up to <b>1, 2 or 3</b> glitches. Bigger codes cost more qubits.',
+      'Pick the <b>smallest</b> code that is <em>sure</em> to survive any burst within the spec. Then the worst case hits: exactly that many glitches. The fewest-flips rule decodes, and it does not know the spec; your job is the plan. Get each spec right once: 1, 2 and 3.',
     ],
   },
   {
@@ -157,7 +162,7 @@ function newRound() {
     const left = [1, 2, 3].filter(k => !S.rightK.has(k));
     const open = left.length ? left : [1, 2, 3];   // all done: the level is about to close
     S.k = rng.pick(open.length > 1 ? open.filter(k => k !== S.k) : open);
-    setStatus(`Incoming: a burst of ${S.k} glitch${S.k > 1 ? 'es' : ''}. Pick a code.`, 'warn');
+    setStatus(`Spec: bursts of up to ${S.k} glitch${S.k > 1 ? 'es' : ''}. Pick a code.`, 'warn');
   } else setStatus('All quiet. Press ⚡ GLITCH to start the round.', 'info');
   updateUI();
 }
@@ -169,7 +174,7 @@ function pickSize(n) {
   S.err = S.lv.errors(n, S.k);
   S.corr = P.identity(n);
   S.phase = 'auto';
-  setStatus(`⚡ ${S.k} glitch${S.k > 1 ? 'es' : ''} hit. Decoding with the fewest flips…`, 'error');
+  setStatus(`⚡ Worst case: ${S.k} glitch${S.k > 1 ? 'es' : ''} hit. Decoding with the fewest flips…`, 'error');
   updateUI();
   setTimeout(() => {
     S.corr = D.matchingDecode(S.code, D.syndrome(S.code, S.err));
@@ -228,9 +233,10 @@ function check() {
     bites.notify('solved');
     S.solved++;
     setStatus('✓ Fixed! The stored qubit is safe.', 'success');
-    if (S.retried) bites.feedback(S.lv.countAll
+    if (S.retried) bites.feedback(S.lv.twoHit
       ? 'Right on the second try! But a real decoder gets only <b>one</b> guess — and with two glitches in three qubits, the checkers always point it the wrong way.'
       : 'Second try worked. A real decoder gets only <b>one</b> guess, so it always goes for the fewest flips.');
+    else if (S.lv.twoHit) bites.feedback('Fixed, but look at the ⚡ marks: <b>two</b> glitches hit, and the checkers could not tell you that. The fewest-flips rule would have flipped the third qubit instead and lost. Three qubits can only fix <b>one</b> glitch — the code\'s <b>distance</b> limit.');
     return endRound();
   }
   if (S.err.z.some(Boolean)) {
@@ -243,8 +249,8 @@ function check() {
   S.phase = 'failed';
   QEC.ui.fx.bad(cv);
   setStatus('✗ Logical error! The checkers are dark, but glitch + your fix flipped ALL qubits (|000⟩ ↔ |111⟩).', 'error');
-  bites.feedback(S.lv.countAll
-    ? 'Two glitches look exactly like one glitch on the <em>other</em> qubit, so the obvious fix completes the flip: a <b>logical error</b>. Three qubits can only fix <b>one</b> glitch — the code\'s <b>distance</b> limit. Try again, or show the answer.'
+  bites.feedback(S.lv.twoHit
+    ? 'This time <b>two</b> glitches hit, and the checkers could not tell you that. Two glitches look exactly like one glitch on the <em>other</em> qubit, so the obvious fix completes the flip: a <b>logical error</b>. Three qubits can only fix <b>one</b> glitch — the code\'s <b>distance</b> limit. Try again, or show the answer.'
     : 'Dark checkers, but the wrong fix. Remember: the <b>fewest</b> flips that turn every checker dark. Try again!');
   updateUI();
 }
@@ -276,7 +282,7 @@ function levelDone() {
     0: '✓ <b>Level complete.</b> You located errors using only "are you equal?" questions.',
     1: '✓ <b>Level complete.</b> More qubits, more checkers — and more glitches you can handle.',
     2: '✓ <b>Lesson learned:</b> a code with distance <b>d</b> can fix up to <b>(d−1)/2</b> glitches. Three qubits: distance 3, one glitch.',
-    3: '✓ <b>Level complete.</b> To survive <b>k</b> glitches you need distance <b>2k + 1</b>. Every extra qubit is one more that can glitch, so engineers pick exactly that.',
+    3: '✓ <b>Level complete.</b> To survive up to <b>k</b> glitches you need distance <b>2k + 1</b>. Every extra qubit is one more that can glitch, so engineers pick exactly that. Real hardware gives no burst size, only a glitch <b>rate</b>. Chapter 6 picks codes from a rate.',
   }[S.idx];
   bites.finish(last
     ? '✓ <b>Chapter complete.</b> Parity checks find bit flips without looking. Next: a checker for phase flips.'
@@ -332,7 +338,7 @@ function draw(t) {
   ctx.clearRect(0, 0, W, H);
   if (!S) return;
   if (S.phase === 'pick') {
-    text(ctx, `INCOMING: ${S.k} GLITCH${S.k > 1 ? 'ES' : ''}`, W / 2, QY - 20, { font: 'bold 24px Courier New', color: '#ffaa00' });
+    text(ctx, `SPEC: UP TO ${S.k} GLITCH${S.k > 1 ? 'ES' : ''}`, W / 2, QY - 20, { font: 'bold 24px Courier New', color: '#ffaa00' });
     text(ctx, 'pick a code size below', W / 2, QY + 20, { font: '16px Courier New', color: '#8fa1b3' });
     return;
   }

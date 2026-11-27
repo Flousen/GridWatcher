@@ -77,36 +77,47 @@ const single = types => {
   const bagQ = rng.bagInt(N), bagT = rng.bag(types);
   return () => P.on(N, [bagQ()], bagT());
 };
-// Level 3: glitch on one of the two qubits under a weight-2 X-check (top edge, then bottom edge).
-const TWINS = [[qubitAt(0, 1), qubitAt(0, 2)], [qubitAt(2, 0), qubitAt(2, 1)]];
+// Levels 1–2: one glitch of one type, only on qubits where it lights a pattern of its own.
+// The other qubits come in degenerate twins, which level 3 introduces on purpose.
+const unique = type => {
+  const bagQ = rng.bag(D.uniqueSingles(code, type));
+  return () => P.on(N, [bagQ()], type);
+};
+// Level 3: glitch on one of the two qubits under the top edge's weight-2 X-check, in both rounds.
+// Round 2 puts it on the qubit the player picked in round 1, and asks for the other one,
+// so the second fix always misses the glitch and still works (the green outline shows why).
+const TWIN = [qubitAt(0, 1), qubitAt(0, 2)];
 
 const LEVELS = [
   {
-    name: 'Z-CHECKS', goal: 3, tools: ['X'], errors: single(['X']),
+    name: 'Z-CHECKS', goal: 3, tools: ['X'], errors: unique('X'),
     bites: [
       'The square from Chapter 4, grown to a 3 × 3 <b>surface code</b> patch. The 9 circles are data qubits that together store <b>one</b> well-protected qubit.',
       'The tiles sit in a checkerboard, with half-tiles on the edges, so an orange and a cyan tile always share 0 or 2 qubits: no clash. And unlike the square, this patch can <em>fix</em> any single glitch from the lit tiles alone.',
       'The <span class="z">orange tiles</span> are the <b>Z-checks</b>: Chapter 3\'s checkers, now asking two or four qubits. They catch <span class="x">X</span> flips. Warm-up: <b>left-click</b> a qubit to apply <span class="x">X</span>.',
       { t: 'Let an <span class="x">X</span> glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
-      { t: 'Find a qubit that touches <em>every</em> lit tile and <em>no</em> dark one. If two of them fit, either is correct — pick one, then CHECK.', wait: 'solved', hint: 'fix it, then CHECK' },
+      { t: 'Find the qubit that touches <em>every</em> lit orange tile and <em>no</em> dark orange one. Fix it, then CHECK.', wait: 'solved', hint: 'fix it, then CHECK' },
       'That was round 1 of 3. Solve 2 more. Stuck? <b>? HINT</b> shows what a decoder would do.',
     ],
   },
   {
-    name: 'X-CHECKS', goal: 3, tools: ['Z'], errors: single(['Z']),
+    name: 'X-CHECKS', goal: 3, tools: ['Z'], errors: unique('Z'),
     bites: [
       'Now the <span class="x">cyan tiles</span>: <b>X-checks</b>, the phase checkers from Chapter 4. They catch <span class="z">Z</span> flips.',
       '<b>Right-click</b> a qubit (on touch: tap it) to apply <span class="z">Z</span>. Fix 3 phase flips.',
     ],
   },
   {
-    name: 'TWIN FIX', goal: 2, countAll: true, tools: ['X'],
-    errors: round => P.on(N, [rng.pick(TWINS[round % 2])], 'X'),
-    candidates: round => TWINS[round % 2],
+    name: 'TWIN FIX', goal: 2, countAll: true, tools: ['X'], twin: true,
+    errors: round => P.on(N, [round > 0 && S.firstPick !== null ? S.firstPick : rng.pick(TWIN)], 'X'),
+    candidates: () => TWIN,
     bites: [
       { t: 'A puzzle. Let the glitch hit.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'The two <b style="color:#ffee00">yellow-ringed</b> qubits explain the lit tile <em>equally well</em>. Pick either one, then CHECK.', wait: 'checked', hint: 'pick one, CHECK' },
-      'Play one more round — try the <em>other</em> qubit this time.',
+      { t: 'Same puzzle again. Press NEXT ROUND and let the glitch hit. This time pick the <em>other</em> yellow qubit, the one you did not pick before, then CHECK.', wait: 'checked', hint: 'pick the other one, CHECK' },
+      'Both picks worked, but only one of them can be where the glitch was. Look at the <b style="color:#00ff88">green outline</b>: glitch + fix together are exactly the qubits of one <b>check</b>.',
+      'Flipping every qubit of a check leaves the stored qubit alone: it is the same as doing nothing. So the two fixes are <b>equally right</b>. This is called <b>degeneracy</b>.',
+      'Why it matters: in Chapter 1 every alarm pattern had exactly <b>one</b> right answer. A quantum code can have several. A decoder does not need to find the exact glitch, only <em>one</em> of the right fixes.',
     ],
   },
   {
@@ -135,11 +146,11 @@ const LEVELS = [
 ];
 
 // ── State ──────────────────────────────────────────────────────────────────
-let S = null, hover = -1, hintUntil = 0, hintCorr = null, explainedTwin = false;
+let S = null, hover = -1, hintUntil = 0, hintCorr = null, explainedTwin = false;   // explainedTwin: degeneracy reminder shown once
 
 function startLevel(i) {
   const lv = LEVELS[i];
-  S = { lv, idx: i, solved: 0, played: 0, matched: 0, round: 0, hints: 0 };
+  S = { lv, idx: i, solved: 0, played: 0, matched: 0, round: 0, hints: 0, firstPick: null };
   newRound();
   bites.play(lv.bites, () => { if (S.goalReached) levelDone(); else updateUI(); });
 }
@@ -248,6 +259,14 @@ function check() {
   input.commit();
   if (S.phase !== 'hidden' || !bites.open) return;
   if (!D.isZero(syndrome())) { setStatus('Some tiles are still lit — keep going.', 'warn'); QEC.ui.fx.nudge(cv); return; }
+  // TWIN FIX, round 2: the point is to try the qubit not picked in round 1.
+  const pick = P.weight(S.corr) === 1 ? TWIN.find(q => P.get(S.corr, q) === 'X') : undefined;
+  if (S.lv.twin && S.round === 1 && S.firstPick !== null && pick === S.firstPick) {
+    setStatus('That is the qubit you picked last round. Click or tap it again to undo it, then pick the other yellow one.', 'warn');
+    QEC.ui.fx.nudge(cv);
+    return;
+  }
+  if (S.lv.twin && S.round === 0) S.firstPick = pick === undefined ? null : pick;
   S.result = D.residualStatus(code, S.err, S.corr);
   if (S.lv.matchDecoder && S.firstMatch === null) {
     S.firstMatch = S.result === 'ok' || decoderAlsoFails();
@@ -266,9 +285,13 @@ function check() {
     if (P.equal(S.err, S.corr)) setStatus(`✓ Fixed — exactly the glitched qubit${P.weight(S.err) > 1 ? 's' : ''}.`, 'success');
     else {
       setStatus('✓ Fixed — with a different fix than the glitch! Still perfect.', 'success');
-      if (!explainedTwin) {
+      // TWIN FIX names it in its own bites; elsewhere a reminder, once.
+      if (S.lv.twin) {
+        if (S.round === 0) bites.feedback('Your fix was not on the glitched qubit, yet it worked. Look at the <b>green outline</b>. Keep playing: the next round shows why.');
+      } else if (!explainedTwin) {
         explainedTwin = true;
-        bites.feedback('Your fix was not on the glitched qubit, yet it worked. Look at the <b>green outline</b>: glitch + fix together are exactly the qubits of one <b>check</b>. Flipping every qubit of a check leaves the stored qubit alone — it is the same as doing nothing, so the two fixes differ by nothing at all. That is <b>degeneracy</b>.');
+        bites.feedback('Your fix was not on the glitched qubit, yet it worked. Look at the <b>green outline</b>: glitch + fix together are exactly the qubits of one <b>check</b>, which leaves the stored qubit alone. '
+          + (S.idx < 2 ? 'Level 3 is about this.' : 'That is <b>degeneracy</b> again, as in Twin fix.'));
       }
     }
     return endRound();

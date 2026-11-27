@@ -173,7 +173,15 @@
     return corr;
   }
 
+  // Qubits where a single error of this type ('X', 'Z' or 'Y') lights a pattern no other single
+  // error of that type lights. Glitches drawn from these have exactly one right one-flip fix;
+  // the rest come in degenerate twins (Chapter 5 saves those for its level "Twin fix").
+  function uniqueSingles(code, type) {
+    const keys = Array.from({ length: code.n }, (_, q) => syndrome(code, P.on(code.n, [q], type)).join(''));
+    return keys.map((k, q) => q).filter(q => keys.indexOf(keys[q]) === keys.lastIndexOf(keys[q]));
+  }
+
   function popcount(m) { let c = 0; while (m) { c += m & 1; m >>>= 1; } return c; }
 
-  QEC.decoder = { syndrome, isZero, residualStatus, matchingGraph, greedyDecode, matchingDecode, lookupDecode };
+  QEC.decoder = { syndrome, isZero, residualStatus, matchingGraph, greedyDecode, matchingDecode, lookupDecode, uniqueSingles };
 })(window.QEC = window.QEC || {});

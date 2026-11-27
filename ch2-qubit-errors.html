@@ -71,34 +71,52 @@ const same = (a, b) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.z - b.z) < 1e-9;
 // ── Levels ─────────────────────────────────────────────────────────────────
 const LEVELS = [
   {
-    name: 'BIT FLIP', goal: 3, targets: [0, 180], errors: ['X'],
+    // practice: one fix completes the level; after that GLITCH stays live for as long as the player likes.
+    name: 'BIT FLIP', goal: 1, practice: true, targets: [0, 180], errors: ['X'],
     bites: [
       'A classical bit is 0 or 1. A <b>qubit</b> is more like an arrow: up is <b>|0⟩</b>, down is <b>|1⟩</b>, and any angle in between is a mix of both — a <em>superposition</em>.',
       { t: 'The dashed arrow shows what the qubit <em>should</em> be. Now let a glitch hit it.', wait: 'glitch', hint: 'press ⚡ GLITCH' },
       { t: 'That was an <span class="x">X</span> error, a <b>bit flip</b>: it mirrors the arrow top↔bottom. Undo it by applying <span class="x">X</span> again.', wait: 'fixed', hint: 'press X' },
       'X twice = nothing at all. That\'s the trick: <b>an error is undone by applying it again</b>.',
-      'Fix 3 bit flips to finish this level.',
     ],
   },
   {
-    name: 'PHASE FLIP', goal: 3, targets: [90, 270], errors: ['Z'],
+    name: 'PHASE FLIP', goal: 1, practice: true, targets: [90, 270], errors: ['Z'],
     bites: [
       'Qubits have a second way to break — one classical bits don\'t have.',
       { t: 'Here is <b>|0⟩</b>. The <span class="z">Z</span> gate, the <b>phase flip</b>, mirrors the arrow left↔right. What will it do to this arrow?',
         ask: ['Flip it down to |1⟩', 'Tip it over to |+⟩', 'Nothing you can see'], answer: 2, kind: 'predict', id: 'z-on-0',
-        onShow: () => setupDemo(0) },
+        onShow: () => setupDemo(0, 'Z') },
       { t: 'Find out: apply <span class="z">Z</span> and watch closely.', wait: 'gateZ', hint: 'press Z' },
       'Nothing moved! An arrow pointing straight up is its own mirror image left↔right. Phase flips only show on superpositions.',
       { t: 'So start at <b>|+⟩</b>, halfway between 0 and 1. Let it glitch.', wait: 'glitch', hint: 'press ⚡ GLITCH',
         onShow: () => newRound() },
       { t: 'It jumped to the other side (|+⟩ ↔ |−⟩): same 50/50 mix of 0 and 1, opposite <em>phase</em>. Undo it.', wait: 'fixed', hint: 'apply the right gate' },
-      'Fix 3 phase flips to finish this level.',
+      'Z twice = nothing, just like X. Bit flip and phase flip: two different ways for a qubit to break.',
+    ],
+  },
+  {
+    name: 'BOTH AT ONCE', goal: 1, practice: true, targets: [30, 60, 120, 150, 210, 240, 300, 330], errors: ['Y'],
+    bites: [
+      'The third glitch is <span class="y">Y</span>: an <span class="x">X</span> and a <span class="z">Z</span> at the same time.',
+      { t: 'Here is <b>|0⟩</b> again. What will <span class="y">Y</span> do to it?',
+        ask: ['Flip it down to |1⟩, like X', 'Nothing you can see, like Z', 'Tip it over to |+⟩'], answer: 0, kind: 'predict', id: 'y-on-0',
+        onShow: () => setupDemo(0, 'Y') },
+      { t: 'Find out: apply <span class="y">Y</span>.', wait: 'gateY', hint: 'press Y' },
+      'Down to |1⟩, exactly like X. The Z part changes nothing here: you saw in the last level that Z leaves |0⟩ alone. On |0⟩ you can\'t tell Y from X.',
+      { t: 'Now <b>|+⟩</b>. Apply <span class="y">Y</span> again.', wait: 'gateY', hint: 'press Y',
+        onShow: () => setupDemo(90, 'Y') },
+      'Over to |−⟩, exactly like Z. This time the X part changes nothing: |+⟩ is its own mirror image top↔bottom.',
+      { t: 'You only see both parts at an odd angle. Let a glitch hit this arrow.', wait: 'glitch', hint: 'press ⚡ GLITCH',
+        onShow: () => newRound() },
+      { t: 'Flipped top↔bottom <em>and</em> left↔right: the arrow made a <b>half turn</b>. That is a <span class="y">Y</span>. Undo it.', wait: 'fixed', hint: 'apply the right gate' },
+      '<span class="y">Y</span> is just <span class="x">X</span> and <span class="z">Z</span> together (up to an overall factor that no measurement can ever see). So X then Z would fix it too, in two moves. Y does it in one.',
     ],
   },
   {
     name: 'MYSTERY', goal: 4, clean: true, targets: [30, 60, 120, 150, 210, 240, 300, 330], errors: ['X', 'Z', 'Y'],
     bites: [
-      'Now the arrow sits at an odd angle and the glitch can be anything: <span class="x">X</span>, <span class="z">Z</span>, or <span class="y">Y</span> — which is X and Z at once.',
+      'Now all three glitches are in the mix: <span class="x">X</span>, <span class="z">Z</span> or <span class="y">Y</span>. You won\'t be told which.',
       'When a glitch hits, the arrow turns red and jumps. A dashed arrow stays behind and shows where it should point. Compare the two: flipped top↔bottom? Left↔right? Both?',
       'Every error is one of these three (or a mix you can build from them). Here only <b>clean fixes</b> count: the right gate on the first try. Read the arrow, then press. Fix 4 cleanly.',
     ],
@@ -113,10 +131,12 @@ const LEVELS = [
       'A single answer, 0 or 1 — and the arrow <b>snapped</b> to it.',
       { t: 'Can you get the dashed arrow back? You still have <span class="x">X</span>, <span class="z">Z</span> and <span class="y">Y</span>. Try.', wait: 'restore', hint: 'try 3 gates' },
       'No gate brings it back: they only mirror, and a mirrored |0⟩ or |1⟩ is still |0⟩ or |1⟩. The angle — the stored information — is <b>gone</b>. Measuring didn\'t just look; it destroyed the data.',
-      { t: 'Prepare and measure a few more times. Same arrow, random answers.', wait: 'measure3', hint: 'measure 3 more times' },
-      { t: 'Now an arrow pointing straight <b>down</b>, at |1⟩. You measure it. What happens?',
+      { t: 'Prepare the same arrow again and measure, until you have seen <b>both</b> answers. The tally above the board counts them.',
+        wait: 'measure3', hint: 'PREPARE AGAIN, then MEASURE', onShow: () => startTally() },
+      'Same arrow every time, yet different answers: measuring is a dice roll. Over many tries, this arrow gives 0 about 3 times in 4.',
+      { t: '<b>A new qubit.</b> We set this one up pointing straight <b>down</b>, at |1⟩.', onShow: () => setupMeasure(180, true) },
+      { t: 'You measure this arrow at |1⟩. What happens?',
         ask: ['You get 1, and the arrow stays put', '0 or 1 at random, and it snaps', 'It tips over sideways'], answer: 0, kind: 'check', id: 'measure-1',
-        onShow: () => setupMeasure(180),
         reply: (i, ok) => (ok ? '✓ Right.' : '✗ Not quite: you get <b>1, and the arrow stays put</b>.')
           + ' An arrow that already points at an answer has nothing to lose. Measuring destroys only the <em>in-between</em>.' },
       { t: 'See for yourself.', wait: 'measure', hint: 'press MEASURE' },
@@ -130,7 +150,6 @@ let S = null;
 let anim = null;     // { from, to, t0, gate }
 let flash = -1e9;    // timestamp of last glitch flash
 let bagTarget = null, bagError = null;
-let measureCount = 0;
 
 function startLevel(i) {
   const lv = LEVELS[i];
@@ -138,8 +157,10 @@ function startLevel(i) {
   // menu (X, Z and Y) instead of handing out the same glitch three times.
   bagTarget = rng.bag(lv.targets);
   bagError  = lv.errors.length ? rng.bag(lv.errors) : null;
-  S = { lv, idx: i, phase: 'ready', target: null, v: null, fixed: 0, moves: 0, perfect: 0, glitches: 0, restoreTries: 0, demo: false, measure: false };
-  measureCount = 0;
+  // tally: [count of 0, count of 1] while NO PEEKING asks for repeated measurements, else null.
+  // practising: a practice level is complete and stays open for more rounds.
+  S = { lv, idx: i, phase: 'ready', target: null, v: null, fixed: 0, moves: 0, perfect: 0, glitches: 0, restoreTries: 0,
+        demo: false, demoGate: null, tally: null, practising: false };
   newRound();
   bites.play(lv.bites, () => { if (lv.goal === 0 || S.goalReached) levelDone(); else updateUI(); });
   updateUI();
@@ -156,26 +177,37 @@ function newRound() {
   updateUI();
 }
 
-function setupDemo(deg) {
+const KET = { 0: '|0⟩', 90: '|+⟩', 180: '|1⟩', 270: '|−⟩' };
+
+// A demo arrow for one named gate (only that gate's button is live): 'Z' on |0⟩, 'Y' on |0⟩ and |+⟩.
+function setupDemo(deg, gate) {
+  anim = null;
   S.target = fromAngle(deg);
   S.v = { ...S.target };
   S.phase = 'broken';
   S.demo = true;
-  setStatus('This is |0⟩.', 'info');
+  S.demoGate = gate;
+  setStatus(`This is ${KET[deg]}.`, 'info');
   updateUI();
 }
 
-function setupMeasure(deg) {
-  anim = null;   // a new arrow replaces any snap still in flight
+// fresh: a new qubit, not the old one measured again, so the arrow grows out of the centre.
+function setupMeasure(deg, fresh = false) {
   S.target = fromAngle(deg);
   S.v = { ...S.target };
+  anim = fresh ? { from: { x: 0, z: 0 }, to: S.v, t0: performance.now(), gate: null, ms: 900 } : null;
   S.phase = 'measure';
-  setStatus(deg === 180 ? 'This arrow points straight at |1⟩.' : 'This arrow is mostly |0⟩, a bit of |1⟩.', 'info');
+  S.tally = null;
+  setStatus(deg === 180 ? (fresh ? 'New qubit, prepared pointing straight down at |1⟩.' : 'This arrow points straight at |1⟩.')
+    : 'This arrow is mostly |0⟩, a bit of |1⟩.', 'info');
   updateUI();
 }
 
-// Inputs are live only when a bite is waiting for the player, or after all bites are read.
-const canAct = () => bites.open;
+function startTally() { S.tally = [0, 0]; updateUI(); }
+
+// Inputs are live only when a bite is waiting for the player, or after all bites are read
+// (a finished practice level counts: its bites are read, only the closing NEXT LEVEL is left).
+const canAct = () => bites.open || (S && S.practising);
 bites.onChange = () => { if (S) updateUI(); };
 
 function glitch() {
@@ -195,7 +227,12 @@ function applyGate(g) {
   if (S.phase !== 'broken' || !canAct() || anim) return;
   move(GATES[g](S.v), g);
   if (S.demo) {
-    if (g === 'Z') { setStatus('Z applied to |0⟩ … and nothing changed.', 'warn'); bites.notify('gateZ'); }
+    const was = KET[Math.round(Math.atan2(anim.from.x, anim.from.z) * 180 / Math.PI + 360) % 360];
+    const now = KET[Math.round(Math.atan2(S.v.x, S.v.z) * 180 / Math.PI + 360) % 360];
+    setStatus(was === now ? `${g} applied to ${was} … and nothing changed.` : `${g} applied to ${was}: it went to ${now}.`, 'warn');
+    S.phase = 'shown';   // one press per demo; the next bite sets up the next arrow
+    bites.notify('gate' + g);
+    updateUI();
     return;
   }
   S.moves++;
@@ -212,8 +249,10 @@ function applyGate(g) {
     if (clean || !S.lv.clean) QEC.ui.fx.good(cv); else QEC.ui.fx.nudge(cv);
     bites.notify('fixed');
     updateUI();
-    if (S.fixed >= S.lv.goal) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 700); }
-    else setTimeout(() => { if (S.phase === 'fixed') newRound(); }, 1100);
+    const goal = S.fixed >= S.lv.goal;
+    if (goal && !S.goalReached) { S.goalReached = true; if (bites.done) setTimeout(levelDone, 700); }
+    // Practice levels go on after the goal: another healthy arrow, ready for the next GLITCH.
+    if (!goal || S.lv.practice) setTimeout(() => { if (S.phase === 'fixed') newRound(); }, 1100);
   } else {
     setStatus(S.lv.clean && S.moves === 1 ? 'Not that one — this round won\'t count, but finish the fix.' : 'Not there yet — compare with the dashed arrow.', 'warn');
     QEC.ui.fx.nudge(cv);
@@ -237,16 +276,18 @@ function measure() {
   const got = rng() < p0 ? 0 : 1;
   move({ x: 0, z: got ? -1 : 1 }, null);
   S.phase = 'measured';
-  measureCount++;
+  if (S.tally && bites.waiting === 'measure3') S.tally[got]++;
   const sure = p0 < 1e-9 || p0 > 1 - 1e-9;
   setStatus(sure ? `Measured: ${got}, with certainty. The arrow was already at |${got}⟩ and stays put.`
     : `Measured: ${got}. (P(0) was ${Math.round(p0 * 100)}%.) The arrow snapped to |${got}⟩.`, got ? 'warn' : 'info');
   bites.notify('measure');
-  if (measureCount >= 4 && bites.waiting === 'measure3') {
+  // Honest dice: the step ends once both answers have come up (and at least 3 tries), never by rigging one.
+  const t = S.tally;
+  if (t && bites.waiting === 'measure3' && t[0] && t[1] && t[0] + t[1] >= 3) {
     // Let the arrow finish snapping and the result be read before the next bite resets the arrow.
     const s = S;
     S.settling = true;
-    $('status').textContent += ' Next question in a moment…';   // says why PREPARE is greyed out
+    $('status').textContent += ' Both answers seen. Next step in a moment…';   // says why PREPARE is greyed out
     setTimeout(() => { if (S !== s) return; S.settling = false; bites.notify('measure3'); updateUI(); }, 1800);
   }
   updateUI();
@@ -263,15 +304,21 @@ function prepare() {
 function levelDone() {
   chapter.complete(S.idx);
   const last = chapter.isLast(S.idx);
-  const bonus = S.lv.clean ? ` ${S.perfect} of ${S.glitches} glitches fixed in one move.` : '';
+  const bonus = S.lv.clean ? ` ${S.perfect} of ${S.glitches} glitches fixed in one move.`
+    : S.lv.practice ? ' Practise as long as you like: press ⚡ GLITCH for another round. Then go on.' : '';
   bites.finish(last
     ? '✓ <b>Chapter complete.</b> Qubits suffer bit flips (X), phase flips (Z) and both (Y) — and we may not look. Next: catching errors blindfolded.'
     : `✓ <b>Level complete.</b>${bonus}`,
     last
       ? [{ label: 'CHAPTER 3 →', onClick: () => (location.href = 'ch3-repetition.html') }, { label: 'MAP', cls: '', onClick: () => (location.href = 'index.html') }]
       : [{ label: 'NEXT LEVEL →', onClick: () => chapter.go(S.idx + 1) }]);
-  setStatus(last ? '✓ Chapter 2 complete!' : '✓ Level complete!', 'success');
-  S.phase = 'done';
+  if (S.lv.practice) {
+    S.practising = true;   // keep the round going; GLITCH stays live
+    setStatus('✓ Level complete! Press ⚡ GLITCH to practise, or go on.', 'success');
+  } else {
+    setStatus(last ? '✓ Chapter 2 complete!' : '✓ Level complete!', 'success');
+    S.phase = 'done';
+  }
   updateUI();
 }
 
@@ -286,8 +333,9 @@ function setStatus(msg, cls) { $('status').textContent = msg; $('status').classN
 function updateUI() {
   const lv = S.lv;
   const meas = lv.goal === 0;
-  $('h-fixed-lbl').textContent = lv.clean ? 'CLEAN FIXES' : 'FIXED';
-  $('h-fixed').textContent = meas ? '–' : `${S.fixed}/${lv.goal}`;
+  $('h-fixed-lbl').textContent = meas ? 'RESULTS' : lv.clean ? 'CLEAN FIXES' : 'FIXED';
+  $('h-fixed').textContent = meas ? (S.tally ? `0: ${S.tally[0]}×  1: ${S.tally[1]}×` : '–')
+    : lv.practice ? `${S.fixed}` : `${S.fixed}/${lv.goal}`;
   $('h-moves').textContent = S.moves;
   $('btn-glitch').style.display = meas ? 'none' : '';
   const act = canAct();
@@ -295,7 +343,8 @@ function updateUI() {
   const restoring = meas && bites.waiting === 'restore';
   document.querySelectorAll('[data-gate]').forEach(b => {
     b.style.display = meas && !restoring ? 'none' : '';
-    b.disabled = restoring ? S.phase !== 'measured' : S.phase !== 'broken' || !act;
+    b.disabled = restoring ? S.phase !== 'measured'
+      : S.phase !== 'broken' || !act || (S.demo && b.dataset.gate !== S.demoGate);   // a demo asks for one gate
   });
   $('btn-measure').style.display = meas ? '' : 'none';
   $('btn-prepare').style.display = meas ? '' : 'none';
@@ -354,7 +403,7 @@ function draw(t) {
   // mirror line while a gate animates
   let v = S.v;
   if (anim) {
-    const k = Math.min(1, (t - anim.t0) / 450);
+    const k = Math.min(1, (t - anim.t0) / (anim.ms || 450));
     const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
     v = { x: anim.from.x + (anim.to.x - anim.from.x) * e, z: anim.from.z + (anim.to.z - anim.from.z) * e };
     if (anim.gate) {
@@ -381,7 +430,7 @@ function draw(t) {
     ctx.restore();
   }
 
-  if (S.target && S.phase !== 'measure' && S.phase !== 'measured') arrow(S.target, '#00ff88', { dashed: true, width: 2, glowAmt: 6 });
+  if (S.target && !S.demo && S.phase !== 'measure' && S.phase !== 'measured') arrow(S.target, '#00ff88', { dashed: true, width: 2, glowAmt: 6 });
   else if (S.phase === 'measured' && bites.waiting === 'restore') arrow(S.target, '#00ff88', { dashed: true, width: 2, glowAmt: 6 });
   else if (S.phase === 'measured') arrow(S.target, '#556677', { dashed: true, width: 2, glowAmt: 0 });
   const broken = S.phase === 'broken' && !S.demo;
@@ -393,6 +442,14 @@ function draw(t) {
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
+// Saves from before BOTH AT ONCE (level 3) was added: MYSTERY and NO PEEKING moved up one place,
+// so a save that had reached them moves up with them. The marker makes this run once per browser.
+// (Such a player skips the new level, but its chip is open.)
+if (!QEC.progress.load('ch2', 'yLevel')) {
+  const old = QEC.progress.level('ch2');
+  if (old >= 2) QEC.progress.reachLevel('ch2', old + 1);
+  QEC.progress.save('ch2', 'yLevel', true);
+}
 const chapter = QEC.ui.chapter({ id: 'ch2', el: $('levels'), levels: LEVELS.map(l => l.name), start: startLevel });
 chapter.begin();
 QEC.ui.loop(draw);

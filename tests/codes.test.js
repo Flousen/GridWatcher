@@ -207,4 +207,21 @@ suite('surface code d=3 lookup decoder', () => {
       }
     assert.ok(checked > 0, 'no logical errors found to repair');
   });
+
+  // Chapter 5, levels 1–2 draw single glitches only from these qubits, so the first
+  // degenerate pair the player meets is the one in "Twin fix".
+  for (const [type, twinCheck] of [['X', 'X'], ['Z', 'Z']]) {
+    test(`unique single ${type} errors: only the qubits of weight-2 ${twinCheck}-checks have a twin`, () => {
+      const twins = new Set(code.stabs.filter(s => s.type === twinCheck && s.qubits.length === 2).flatMap(s => s.qubits));
+      const unique = D.uniqueSingles(code, type);
+      assert.deepEqual(unique, [...Array(9).keys()].filter(q => !twins.has(q)));
+      assert.equal(unique.length, 5);
+      // and a glitch on a twin qubit really has two equally good one-flip fixes, which differ by a check
+      for (const s of code.stabs.filter(s => s.type === twinCheck && s.qubits.length === 2)) {
+        const [a, b] = s.qubits;
+        assert.deepEqual(D.syndrome(code, P.on(9, [a], type)), D.syndrome(code, P.on(9, [b], type)));
+        assert.equal(D.residualStatus(code, P.on(9, [a], type), P.on(9, [b], type)), 'ok');
+      }
+    });
+  }
 });

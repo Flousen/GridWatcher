@@ -40,6 +40,10 @@ details.table summary { cursor: pointer; letter-spacing: 2px; }
 details.table table { border-collapse: collapse; margin-top: 6px; width: 100%; }
 details.table td, details.table th { padding: 3px 8px; text-align: right; border-bottom: 1px solid #1a2a3a; color: var(--chart-ink); }
 #guess-row { display: none; }
+.expect { font-size: 0.74em; color: var(--dim); }
+.batches { list-style: none; margin: 0; padding: 0; font-size: 0.76em; color: var(--chart-ink); text-align: center; line-height: 1.6; }
+.batches b { color: var(--cyan); }
+.batches li.old { color: var(--chart-muted); }
 </style>
 </head>
 <body>
@@ -67,10 +71,18 @@ details.table td, details.table th { padding: 3px 8px; text-align: right; border
           <span class="val" id="p-val">5%</span>
         </div>
         <div class="row">
+          <div class="chip">GLITCHED <b id="h-glitched">–</b> of <span id="h-n">9</span></div>
+          <span class="expect" id="h-expect"></span>
+        </div>
+        <div class="row">
           <button class="btn" id="btn-roll">🎲 ROLL</button>
           <div class="chip">SHOTS <b id="h-shots">0</b></div>
           <div class="chip">FOOLED <b id="h-fails">0</b></div>
         </div>
+        <div class="row">
+          <button class="btn" id="btn-batch">🎲 ROLL 100</button>
+        </div>
+        <ul class="batches" id="batches" aria-live="polite"></ul>
       </div>
 
       <div class="panel" id="panel-chart">
@@ -185,17 +197,24 @@ const LEVELS = [
     name: 'ONE SHOT', panel: 'shot',
     bites: [
       'Chapters 1–5 built the machinery. This one asks the question that decides whether any of it <b>pays off</b>: if a patch keeps failing, does making it <b>bigger</b> fix that? More qubits mean more room to spot errors — but also more qubits that can glitch. Three levels to find out which side wins.',
-      'First, a single patch under random noise. Our model: every qubit independently gets an <span class="x">X</span> flip with probability <b>p</b>.',
+      'First, a single patch under random noise. In Chapter 3 you were told how many glitches would hit. Real hardware never says that; it has a glitch <b>rate</b>. Our model: every qubit independently gets an <span class="x">X</span> flip with probability <b>p</b>.',
       { t: 'Roll a shot. Glitches (red) light the checks, and a <b>decoder</b> — a program doing what you did in Chapters 4 and 5 — applies its fix (cyan rings).', wait: 'shot', hint: 'press 🎲 ROLL' },
+      'GLITCHED counts the red qubits. On average it is <b>n × p</b>: n qubits, each glitching with chance p. Each roll scatters around that.',
       { t: 'At small p the decoder almost always wins. Turn p up and roll until it gets <b>fooled</b>.', wait: 'fail', hint: 'raise p, roll until FOOLED' },
       'Too many glitches: the decoder\'s best guess completes an edge-to-edge chain (yellow) — a logical error. Nobody could have done better with that syndrome.',
-      'So a patch does not break on one glitch; it breaks when glitches gang up. Whether a bigger patch makes that more or less likely, single rolls can\'t tell you — dice are too noisy. Next: thousands of them.',
+      { t: 'Now keep p and change the size. Pick another patch (try <b>d = 7</b>, or d = 3 if you are on 7) and roll 3 times. More qubits, so more glitches — but a bigger patch also needs more of them to gang up.',
+        wait: 'compare', hint: 'switch d, roll 3 times', onShow: () => { compareFrom = dist; compareRolls = 0; } },
+      { t: 'Which side wins? A few rolls can\'t tell. Press <b>ROLL 100</b>: it rolls 100 shots and counts how often the decoder is fooled. Do it for two sizes at the same p.',
+        wait: 'batch2', hint: 'ROLL 100 at two sizes, same p' },
+      { t: 'That count, divided by 100, is the <b>logical error rate</b> at one point: one size, one p. 100 shots are still noisy, above all when failures are rare.',
+        onShow: () => bites.feedback(batchCompare()) },
+      'So a patch does not break on one glitch; it breaks when glitches gang up. Next level: the same count, <b>1 500</b> shots per point, for d = 3, 5 and 7 and every p from 1% to 20%.',
     ],
   },
   {
     name: 'SWEEP', panel: 'chart',
     bites: [
-      'One shot is luck. To compare codes we roll <b>thousands</b> per setting and count how often the decoder is fooled: the <b>logical error rate</b>. That is the number a chip designer actually cares about.',
+      'ROLL 100 gave one point from 100 shots. The sweep rolls <b>1 500</b> per point and counts how often the decoder is fooled: the <b>logical error rate</b> again, for every size and p. That is the number a chip designer actually cares about.',
       { t: 'Before you run it, place two bets. At a <b>low</b> glitch rate, p = 3%, which patch fails least often?',
         ask: BETS, answer: 2, kind: 'predict', id: 'bet-low', reveal: false, onAnswer: i => (bets.low = i) },
       { t: 'And at a <b>high</b> glitch rate, p = 18%?',
@@ -223,6 +242,9 @@ const LEVELS = [
 
 // ── State ──────────────────────────────────────────────────────────────────
 let lvIdx = 0, dist = 3, shots = 0, fails = 0, last = null, sweeping = false;
+let compareFrom = null, compareRolls = 0;   // the "change the size" step: rolls at a size other than compareFrom
+let batching = false;
+const batches = [];   // ROLL 100 results, newest last: { d, p, fails, shots }
 const data = {};   // data[d][i] = logical error rate at P_GRID[i]
 
 function startLevel(i) {
@@ -265,7 +287,55 @@ function roll() {
     : k ? `✓ ${k} glitch${k === 1 ? '' : 'es'} — decoder fixed it.` : 'No glitch this time.', fooled ? 'error' : 'success');
   bites.notify('shot');
   if (fooled) bites.notify('fail');
+  if (bites.waiting === 'compare' && dist !== compareFrom && ++compareRolls >= 3) bites.notify('compare');
   updateUI();
+}
+
+// ROLL 100: one point of the coming chart, made by the player. Rolled in short slices so the page stays responsive.
+const BATCH = 100;
+function rollBatch() {
+  if (batching) return;
+  batching = true;
+  const b = { d: dist, p: pNow(), fails: 0, shots: 0 };
+  setStatus(`Rolling ${BATCH} shots at d=${b.d}, p=${Math.round(b.p * 100)}%…`, 'info');
+  updateUI();
+  (function next() {
+    const t0 = performance.now();
+    while (b.shots < BATCH && performance.now() - t0 < 25) {
+      const s = QEC.sim.shot(CODES[b.d], b.p, rng);
+      b.shots++;
+      if (s.status !== 'ok') b.fails++;
+      if (b.shots === BATCH) { last = s; last.d = b.d; }   // the canvas shows the batch's final shot
+    }
+    if (b.shots < BATCH) return setTimeout(next, 0);
+    batching = false;
+    batches.push(b);
+    setStatus(`${BATCH} shots at d=${b.d}, p=${Math.round(b.p * 100)}%: the decoder was fooled ${b.fails} time${b.fails === 1 ? '' : 's'}.`, b.fails ? 'warn' : 'success');
+    renderBatches();
+    bites.notify('batch');
+    if (batchPair()) bites.notify('batch2');
+    updateUI();
+  })();
+}
+
+// The newest two batches with the same p but different sizes, or null.
+function batchPair() {
+  for (let i = batches.length - 1; i > 0; i--)
+    for (let j = i - 1; j >= 0; j--)
+      if (batches[i].p === batches[j].p && batches[i].d !== batches[j].d) return [batches[j], batches[i]];
+  return null;
+}
+function batchCompare() {
+  const pair = batchPair();
+  if (!pair) return '';
+  const [a, b] = pair.sort((x, y) => x.d - y.d);
+  const verdict = a.fails === b.fails ? 'a tie this time'
+    : a.fails > b.fails ? `the bigger patch (d=${b.d}) did better this time` : `the smaller patch (d=${a.d}) did better this time`;
+  return `Your point at p = ${Math.round(a.p * 100)}%: d=${a.d} fooled <b>${a.fails} of ${a.shots}</b>, d=${b.d} fooled <b>${b.fails} of ${b.shots}</b> — ${verdict}.`;
+}
+function renderBatches() {
+  $('batches').innerHTML = batches.slice(-3).map((b, k, arr) =>
+    `<li${k < arr.length - 1 ? ' class="old"' : ''}>d=${b.d}, p=${Math.round(b.p * 100)}%: fooled <b>${b.fails} of ${b.shots}</b></li>`).join('');
 }
 
 function haveData() { return DISTANCES.every(d => data[d] && data[d].length === P_GRID.length); }
@@ -333,15 +403,29 @@ function updateUI() {
   $('guess-val').textContent = (Number($('guess').value) / 10).toFixed(1) + '%';
   $('h-shots').textContent = shots;
   $('h-fails').textContent = fails;
-  document.querySelectorAll('.dbtn').forEach(b => b.classList.toggle('active', Number(b.dataset.d) === dist));
+  const n = dist * dist, shot = last && last.d === dist ? last : null;
+  $('h-n').textContent = n;
+  $('h-glitched').textContent = shot ? shot.err.x.filter(Boolean).length : '–';
+  const e = n * pNow();
+  $('h-expect').textContent = `average ≈ ${e < 10 ? e.toFixed(1) : Math.round(e)} (${n} × ${Math.round(pNow() * 100)}%)`;
+  // Rolling and resizing wait for the briefing (and for a running ROLL 100); the title says why.
+  const live = bites.open && !batching;
+  const why = batching ? 'Wait for ROLL 100 to finish.' : bites.open ? '' : 'Read the briefing first (NEXT).';
+  document.querySelectorAll('.dbtn').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.d) === dist);
+    b.disabled = !live;
+    b.title = why;
+  });
   $('btn-sweep').disabled = sweeping || !bites.open;
-  $('btn-roll').disabled = !bites.open;
+  $('btn-roll').disabled = $('btn-batch').disabled = !live;
+  $('btn-roll').title = $('btn-batch').title = why;
   $('guess').disabled = $('btn-lock').disabled = !bites.open;   // locked while the briefing asks
   drawChart();
 }
 bites.onChange = updateUI;
 
-$('btn-roll').onclick = () => { if (bites.open) roll(); };
+$('btn-roll').onclick = () => { if (bites.open && !batching) roll(); };
+$('btn-batch').onclick = () => { if (bites.open && !batching) rollBatch(); };
 $('btn-sweep').onclick = () => { if (bites.open) sweep(); };
 $('btn-lock').onclick = lockIn;
 $('p').oninput = updateUI;
@@ -387,7 +471,10 @@ $('chart').addEventListener('pointerup', e => {
   if (tap && guessLive()) dragGuess(e);
 });
 $('chart').addEventListener('pointercancel', () => { touch = null; });   // the browser took it as a scroll
-document.querySelectorAll('.dbtn').forEach(b => (b.onclick = () => { dist = Number(b.dataset.d); last = null; updateUI(); }));
+document.querySelectorAll('.dbtn').forEach(b => (b.onclick = () => {
+  if (!bites.open || batching) return;   // disabled then, see updateUI
+  dist = Number(b.dataset.d); last = null; updateUI();
+}));
 
 // ── One-shot canvas ────────────────────────────────────────────────────────
 function draw(t) {

@@ -121,11 +121,24 @@ const C = {
 };
 
 // ── Level data ────────────────────────────────────────────────────────────────
-function pts_circle(n, cx, cy, r, startAngle = -Math.PI/2) {
-  return Array.from({length: n}, (_, i) => {
-    const a = startAngle + i * 2 * Math.PI / n;
-    return { x: Math.round(cx + r * Math.cos(a)), y: Math.round(cy + r * Math.sin(a)) };
-  });
+// Nodes sit in rows, in label order, like a Tanner graph: data on top, checks (sensors) below.
+// Core levels: one row at the top, the open band below is for sensors.
+// Challenges: two rows (at most 8 each) with the sensor band between them, so no wire has to
+// pass another node. Both rows share one spacing; the shorter bottom row sits centred under the top.
+const ROW_SPAN = 600;   // widest row, centre to centre (canvas is 700 wide)
+function pts_row(n, y, gap) {
+  const x0 = W / 2 - (n - 1) * gap / 2;
+  return Array.from({ length: n }, (_, i) => ({ x: Math.round(x0 + i * gap), y }));
+}
+function rowNodes(n) {
+  const lab = 'ABCDEFGHIJKLMNO'.slice(0, n).split('');
+  let ps;
+  if (n <= 8) ps = pts_row(n, 110, Math.min(180, ROW_SPAN / (n - 1)));
+  else {
+    const top = Math.ceil(n / 2), gap = Math.min(180, ROW_SPAN / (top - 1));
+    ps = [...pts_row(top, 82, gap), ...pts_row(n - top, 372, gap)];
+  }
+  return ps.map((p, i) => ({ id: i, ...p, label: lab[i] }));
 }
 
 // Bites: what the briefing says, one piece at a time (js/ui/bites.js). Events the game reports:
@@ -157,31 +170,26 @@ const LEVELS = [
     ],
     tip: 'Two sensors can ring in three ways: S1 alone, S2 alone, or both. Give each node a different one.',
     done: '✓ <b>Level complete.</b> You found the glitch from the alarm alone. That alarm pattern has a name: the <b>syndrome</b>. It tells you <em>where</em> the glitch is without reading the data. Hold on to it: it is the heart of quantum error correction.',
-    nodes: (() => {
-      const lab = ['A','B','C'];
-      const ps = [{ x:350, y:110 }, { x:200, y:360 }, { x:500, y:360 }];
-      return ps.map((p,i) => ({ id:i, ...p, label:lab[i] }));
-    })(),
+    nodes: rowNodes(3),
   },
   {
     id: 2,
-    title: 'PENTAGON PROTOCOL',
+    title: 'THREE SENSORS',
     sensorBudget: 3,
     bites: [
-      { t: 'Five nodes, and now <b>three</b> sensors. Two sensors told 3 nodes apart. How many can three sensors tell apart at most?',
-        ask: ['4', '6', '7', '8'], answer: 2, kind: 'check', id: 'max-3-sensors',
-        reply: (i, ok) => (ok ? '✓ Right: <b>7</b>.' : '✗ Not quite: <b>7</b>.')
-          + ' Each sensor rings or stays silent, so there are 2 × 2 × 2 = 8 syndromes. "All silent" points at no node, which leaves 7.' },
+      'Five nodes, and now <b>three</b> sensors. The goal is the same: every node rings its own syndrome.',
       'Write a syndrome as bits, one per sensor: 1 = rings, 0 = silent. Only S1 rings: <b>100</b>. S1 and S3: <b>101</b>. After TEST, the dots under each node show the same bits.',
       { t: 'You need 5 different syndromes, one per node. Wire, then TEST.', wait: 'valid', hint: 'wire, then press TEST' },
       LOCATE,
+      // Asked after the wiring, from experience: the player has just used 5 syndromes of three sensors.
+      { t: 'With three sensors you gave 5 nodes 5 different syndromes. How many nodes could three sensors tell apart at most?',
+        ask: ['5', '6', '7', '8'], answer: 2, kind: 'check', id: 'max-3-sensors',
+        reply: (i, ok) => (ok ? '✓ Right: <b>7</b>.' : '✗ Not quite: <b>7</b>.')
+          + ' Each sensor rings or stays silent, so there are 2 × 2 × 2 = 8 syndromes. "All silent" points at no node, which leaves 7. You used 5 of them.' },
     ],
-    tip: 'Three sensors give 100, 010, 001, 110, 101, 011 and 111. Give each node a different one.',
+    tip: 'Three sensors give patterns such as 100, 010, 001 and 110 (but not 000: that is no alarm). Give each node a different one.',
     done: '✓ <b>Level complete.</b> Many wirings work: any 5 of the 7 syndromes will do.',
-    nodes: (() => {
-      const lab = ['A','B','C','D','E'];
-      return pts_circle(5, 350, 230, 165).map((p,i) => ({ id:i, ...p, label:lab[i] }));
-    })(),
+    nodes: rowNodes(5),
   },
   {
     id: 3,
@@ -195,10 +203,7 @@ const LEVELS = [
     ],
     tip: 'Count in binary: give the nodes 001, 010, 011 … 111 and wire each sensor to the nodes with a 1 in its place.',
     done: '✓ <b>Chapter complete.</b> Three checks pinpoint any single glitch among seven bits. Next: <b>qubits</b>, where glitches come in two kinds. Want more of this puzzle first? The challenges are optional.',
-    nodes: (() => {
-      const lab = ['A','B','C','D','E','F','G'];
-      return pts_circle(7, 350, 228, 170).map((p,i) => ({ id:i, ...p, label:lab[i] }));
-    })(),
+    nodes: rowNodes(7),
   },
   {
     id: 4,
@@ -210,10 +215,7 @@ const LEVELS = [
     ],
     tip: 'Pick any 9 different 4-bit syndromes (not 0000) and give one to each node.',
     done: '✓ <b>Challenge solved.</b>',
-    nodes: (() => {
-      const lab = 'ABCDEFGHI'.split('');
-      return pts_circle(9, 350, 225, 170).map((p, i) => ({ id: i, ...p, label: lab[i] }));
-    })(),
+    nodes: rowNodes(9),
   },
   {
     id: 5,
@@ -225,12 +227,7 @@ const LEVELS = [
     ],
     tip: 'Write down 12 of the syndromes 0001 … 1111 first, then wire.',
     done: '✓ <b>Challenge solved.</b>',
-    nodes: (() => {
-      const lab = 'ABCDEFGHIJKL'.split('');
-      const inner = pts_circle(5, 350, 225, 90);
-      const outer  = pts_circle(7, 350, 225, 185, -Math.PI / 2 + Math.PI / 7);
-      return [...inner, ...outer].map((p, i) => ({ id: i, ...p, label: lab[i] }));
-    })(),
+    nodes: rowNodes(12),
   },
   {
     id: 6,
@@ -242,12 +239,7 @@ const LEVELS = [
     ],
     tip: 'Number the nodes 0001 to 1111 and wire each sensor to the nodes with a 1 in its place.',
     done: '✓ <b>Every challenge solved.</b> That was the <b>Hamming(15,11) code</b>: 4 checks guard 11 data bits and find any single glitch among all 15.',
-    nodes: (() => {
-      const lab = 'ABCDEFGHIJKLMNO'.split('');
-      const inner = pts_circle(5, 350, 225, 92);
-      const outer  = pts_circle(10, 350, 225, 190, -Math.PI / 2 + Math.PI / 10);
-      return [...inner, ...outer].map((p, i) => ({ id: i, ...p, label: lab[i] }));
-    })(),
+    nodes: rowNodes(15),
   },
 ];
 const CORE_LEVELS = LEVELS.filter(l => !l.challenge).length;
@@ -530,7 +522,10 @@ function drawCollisionArc(na, nb) {
   const dx = nb.x - na.x, dy = nb.y - na.y;
   const len = Math.sqrt(dx*dx + dy*dy) || 1;
   const bulge = Math.min(70, len * 0.45);
-  const cpx = mx + (-dy / len) * bulge, cpy = my + (dx / len) * bulge;
+  // Bend the arc upwards, away from the bit dots under the nodes (they sit in rows).
+  let ux = -dy / len, uy = dx / len;
+  if (uy > 0) { ux = -ux; uy = -uy; }
+  const cpx = mx + ux * bulge, cpy = my + uy * bulge;
 
   ctx.beginPath();
   ctx.moveTo(na.x, na.y);
@@ -716,7 +711,7 @@ function render(ts = 0) {
     ctx.font = 'bold 26px Courier New';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('✓  ALL PATTERNS UNIQUE', W/2, H/2);
+    ctx.fillText('✓  ALL PATTERNS UNIQUE', W/2, H - 26);   // bottom edge: the sensor band stays readable
     noGlow();
     ctx.globalAlpha = 1;
   }
@@ -784,7 +779,7 @@ canvas.addEventListener('click', e => {
   if (S.phase === 'locate') return locateClick(cPos(e));
   if (!canBuild()) {
     // The board is locked while the briefing talks; say so instead of silently ignoring the click.
-    if (S.phase === 'build' && !bites.open) {
+    if ((S.phase === 'build' || S.phase === 'done') && !bites.open) {
       const cur = bites.list[bites.i];
       setStatus(cur && cur.ask ? 'Answer the question in the briefing first.' : 'Read the briefing first: press NEXT → there.', 'warn');
     }
@@ -1069,7 +1064,8 @@ function locateClick(p) {
     if (L.got >= L.need) {
       S.phase = 'done';
       S.locate = null;
-      bites.notify('located');   // last bite of a core level: the level completes
+      setPhaseLabel('DONE');
+      bites.notify('located');   // next bite: level 2's question, or the end of the level
       return;
     }
     L.target = L.order[L.got];
